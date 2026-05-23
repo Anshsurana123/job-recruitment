@@ -248,3 +248,88 @@ class LocalOCREngine:
                 y_coords = [p[1] for p in bbox]
                 x_coords = [p[0] for p in bbox]
                 all_boxes.append({
+                    "text": text,
+                    "y_min": min(y_coords),
+                    "x_min": min(x_coords)
+                })
+            all_boxes.sort(key=lambda b: b["y_min"])
+            
+            lines = []
+            current_line = []
+            current_y = None
+            
+            for box in all_boxes:
+                if current_y is None:
+                    current_y = box["y_min"]
+                    current_line.append(box)
+                elif abs(box["y_min"] - current_y) < 10:
+                    current_line.append(box)
+                else:
+                    current_line.sort(key=lambda b: b["x_min"])
+                    lines.append(" ".join([b["text"] for b in current_line]))
+                    current_line = [box]
+                    current_y = box["y_min"]
+                    
+            if current_line:
+                current_line.sort(key=lambda b: b["x_min"])
+                lines.append(" ".join([b["text"] for b in current_line]))
+                
+            page_text = "\n".join(lines)
+            
+        print(f"      - Page {page_idx + 1} layout OCR complete.", flush=True)
+        return page_idx, page_text.strip()
+
+    def extract_text_easyocr(self, pdf_bytes: bytes) -> str:
+        """
+        Extracts structured text locally from a scanned PDF page-by-page
+        concurrently using a layout-aware bounding-box grouping algorithm over EasyOCR.
+        """
+        self._init_easyocr()
+        
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        print(f"[Local OCR] Processing scanned PDF via parallel EasyOCR layout engine ({len(doc)} pages)...", flush=True)
+        
+        tasks = []
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            tasks.append((page_idx, img_bytes, pix.width))
+            
+        from concurrent.futures import ThreadPoolExecutor
+        full_text_parts = [None] * len(doc)
+        
+        max_workers = min(len(doc), self.easyocr_workers)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._process_page_easyocr, idx, img_bytes, width): idx
+                for idx, img_bytes, width in tasks
+            }
+            for future in futures:
+                idx, page_text = future.result()
+                full_text_parts[idx] = page_text
+                
+        return "\n\n--- PAGE BREAK ---\n\n".join(full_text_parts)
+
+
+    def extract_text(self, pdf_bytes: bytes) -> str:
+        """
+        Primary engine interface. Attempts Qwen2-VL vision OCR extraction
+        and cascades to EasyOCR fallback on GPU out-of-memory or model failures.
+        """
+        # Re-check backend setting in case it changed dynamically
+        self.backend = os.getenv("LOCAL_OCR_BACKEND", "qwen2.5-vl").lower()
+        
+        if self.backend == "qwen2.5-vl":
+            try:
+                return self.extract_text_qwen(pdf_bytes)
+            except Exception as e:
+                print(f"[Local OCR Fallback] Local vision Qwen model failed: {e}. Cascading to EasyOCR...", flush=True)
+                # Cleanup model reference to free VRAM before reloading EasyOCR
+                with self._model_lock:
+                    self._model = None
+                    self._processor = None
+                return self.extract_text_easyocr(pdf_bytes)
+        else:
+            return self.extract_text_easyocr(pdf_bytes)
