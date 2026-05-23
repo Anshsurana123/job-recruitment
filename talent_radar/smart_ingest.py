@@ -148,3 +148,203 @@ def _extract_pdfs_from_zip(zip_bytes: bytes) -> list[tuple[str, str, bytes]]:
 # -------------------------------------------------------------------- #
 def _build_batches(
     pdf_items: list[tuple[str, str, bytes]], batch_size: int = DEFAULT_BATCH_SIZE
+) -> list[list[tuple[str, str, bytes]]]:
+    """Splits the list of (filename, raw_text, pdf_bytes) into chunks of batch_size."""
+    return [
+        pdf_items[i : i + batch_size]
+        for i in range(0, len(pdf_items), batch_size)
+    ]
+
+
+# -------------------------------------------------------------------- #
+#  Skip Logic (Checkpoint Dedup)                                        #
+# -------------------------------------------------------------------- #
+def _skip_already_parsed(
+    pdf_items: list[tuple[str, str, bytes]],
+    existing_candidates: list[dict],
+) -> list[tuple[str, str, bytes]]:
+    """
+    Filters out PDFs whose filenames are already recorded as source_file
+    in the existing candidate pool. Returns only the un-parsed items.
+    """
+    parsed_sources = {
+        c.get("source_file")
+        for c in existing_candidates
+        if c.get("source_file")
+    }
+
+    remaining = [
+        (fname, text, pbytes)
+        for fname, text, pbytes in pdf_items
+        if fname not in parsed_sources
+    ]
+
+    skipped = len(pdf_items) - len(remaining)
+    if skipped > 0:
+        print(f"[Checkpoint] Skipping {skipped} already-parsed files.")
+
+    return remaining
+
+
+# -------------------------------------------------------------------- #
+#  Atomic Checkpoint                                                    #
+# -------------------------------------------------------------------- #
+def _checkpoint(candidates: list[dict], path: Path, lock: threading.Lock):
+    """
+    Thread-safely writes the full candidate list to candidates.json using
+    a temp-file + os.replace() for a single atomic operation.
+    """
+    with lock:
+        # Write to a temp file in the same directory so rename is atomic
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(path.parent), suffix=".tmp", prefix=".candidates_"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(candidates, f, indent=2, ensure_ascii=False)
+            # os.replace() is atomic on both Windows and POSIX —
+            # single syscall, no gap where the file is missing.
+            os.replace(tmp_path, str(path))
+            print(f"[Checkpoint] Saved {len(candidates)} candidates to {path.name}")
+        except Exception:
+            # Clean up temp file on error
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+
+# -------------------------------------------------------------------- #
+#  Batch Processing (with fallback)                                     #
+# -------------------------------------------------------------------- #
+def _process_batch(
+    batch: list[tuple[str, str, bytes]],
+    parser: GeminiResumeParser,
+    job: SmartIngestJob,
+    existing_candidates: list[dict],
+    existing_ids: set[str],
+    candidates_path: Path,
+) -> list[dict]:
+    """
+    Parses a batch of resumes via Gemini batch API. On batch failure or for
+    scanned/non-text PDFs, automatically degrades to individual visual parsing.
+
+    Returns:
+        List of newly created candidate records from this batch.
+    """
+    new_records = []
+    text_resumes = []
+    scanned_resumes = []
+
+    # Separate text-based resumes (batched) and scanned resumes (processed individually)
+    for filename, raw_text, pdf_bytes in batch:
+        if raw_text:
+            text_resumes.append((filename, raw_text, pdf_bytes))
+        else:
+            scanned_resumes.append((filename, raw_text, pdf_bytes))
+
+    # 1. Process text resumes in batch
+    if text_resumes:
+        batch_input = [(fname, txt) for fname, txt, _ in text_resumes]
+        try:
+            # Attempt batch parsing
+            parsed_array = parser.parse_resume_batch(batch_input)
+            matched_indices = set()
+
+            for idx, parsed in enumerate(parsed_array):
+                if idx >= len(text_resumes):
+                    break
+                filename, raw_text, pdf_bytes = text_resumes[idx]
+                record = _build_candidate_record(
+                    parsed, raw_text, filename, existing_candidates, existing_ids, job
+                )
+                if record is not None:
+                    new_records.append(record)
+                matched_indices.add(idx)
+                with job._lock:
+                    job.parsed_count += 1
+
+            # If Gemini returned fewer items than the batch size, process individually
+            if len(matched_indices) < len(text_resumes):
+                missing = [
+                    (i, text_resumes[i]) for i in range(len(text_resumes))
+                    if i not in matched_indices
+                ]
+                print(f"[Partial] Batch returned {len(matched_indices)}/{len(text_resumes)}. "
+                      f"Individually parsing {len(missing)} missing resumes...")
+                for i, (filename, raw_text, pdf_bytes) in missing:
+                    try:
+                        parsed = parser.parse_resume(raw_text, filename)
+                        record = _build_candidate_record(
+                            parsed, raw_text, filename, existing_candidates, existing_ids, job
+                        )
+                        if record is not None:
+                            new_records.append(record)
+                        with job._lock:
+                            job.parsed_count += 1
+                    except Exception as ind_err:
+                        try:
+                            print(f"[Fallback] Text parsing failed for '{filename}'. Trying visual PDF parsing...")
+                            parsed = parser.parse_resume_pdf(pdf_bytes, filename)
+                            record = _build_candidate_record(
+                                parsed, parsed.get("resume_text", ""), filename, existing_candidates, existing_ids, job
+                            )
+                            if record is not None:
+                                new_records.append(record)
+                            with job._lock:
+                                job.parsed_count += 1
+                        except Exception as vis_err:
+                            print(f"[Error] Failed to parse '{filename}': {vis_err}")
+                            with job._lock:
+                                job.failed_count += 1
+                                job.failed_files.append(filename)
+
+        except Exception as batch_err:
+            print(f"[Fallback] Batch of {len(text_resumes)} failed: {batch_err}. "
+                  f"Degrading to individual text/visual parsing...")
+
+            # Full fallback for text resumes: parse each resume individually
+            for filename, raw_text, pdf_bytes in text_resumes:
+                try:
+                    parsed = parser.parse_resume(raw_text, filename)
+                    record = _build_candidate_record(
+                        parsed, raw_text, filename, existing_candidates, existing_ids, job
+                    )
+                    if record is not None:
+                        new_records.append(record)
+                    with job._lock:
+                        job.parsed_count += 1
+                except Exception as ind_err:
+                    try:
+                        print(f"[Fallback] Text parsing failed for '{filename}'. Trying visual PDF parsing...")
+                        parsed = parser.parse_resume_pdf(pdf_bytes, filename)
+                        record = _build_candidate_record(
+                            parsed, parsed.get("resume_text", ""), filename, existing_candidates, existing_ids, job
+                        )
+                        if record is not None:
+                            new_records.append(record)
+                        with job._lock:
+                            job.parsed_count += 1
+                    except Exception as vis_err:
+                        print(f"[Error] Failed to parse '{filename}': {vis_err}")
+                        with job._lock:
+                            job.failed_count += 1
+                            job.failed_files.append(filename)
+
+    # 2. Process scanned resumes individually using native visual fallback
+    for filename, raw_text, pdf_bytes in scanned_resumes:
+        try:
+            print(f"[Multimodal] Visually parsing scanned/non-text PDF resume: '{filename}'...")
+            parsed = parser.parse_resume_pdf(pdf_bytes, filename)
+            record = _build_candidate_record(
+                parsed, parsed.get("resume_text", ""), filename, existing_candidates, existing_ids, job
+            )
+            if record is not None:
+                new_records.append(record)
+            with job._lock:
+                job.parsed_count += 1
+        except Exception as vis_err:
+            print(f"[Error] Failed to parse scanned PDF '{filename}' visually: {vis_err}")
+            with job._lock:
+                job.failed_count += 1
+                job.failed_files.append(filename)
+
