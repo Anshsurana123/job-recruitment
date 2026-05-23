@@ -283,3 +283,43 @@ class GeminiResumeParser:
             }
         }
 
+        response_data = self._call_gemini(payload)
+
+        try:
+            json_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            json_text = self.strip_json_fences(json_text)
+            parsed_json = json.loads(json_text)
+
+            # Post-process to ensure all required fields are populated properly
+            if "resume_text" not in parsed_json:
+                parsed_json["resume_text"] = raw_text
+
+            parsed_json["name_not_extracted"] = False
+
+            return parsed_json
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"Failed to parse response from Gemini API: {str(e)}. Response was: {json.dumps(response_data)[:500]}")
+
+    # ------------------------------------------------------------------ #
+    #  Multimodal raw PDF parsing (for scanned or non-text PDFs)         #
+    # ------------------------------------------------------------------ #
+    def parse_resume_pdf(self, pdf_bytes: bytes, filename: str = "") -> dict:
+        """
+        Extracts text from the PDF using a local OCR engine (Qwen2-VL or EasyOCR),
+        then sends the extracted text to Gemini API for structured JSON parsing.
+        This avoids sending heavy image/PDF payloads to Gemini, reducing token quota usage.
+        """
+        from talent_radar.ocr_engine import LocalOCREngine
+        
+        print("[Local OCR] Extracting text using LocalOCREngine...")
+        ocr_engine = LocalOCREngine()
+        extracted_text = ocr_engine.extract_text(pdf_bytes)
+        
+        if not extracted_text or not extracted_text.strip():
+            raise RuntimeError("Local OCR engine extracted no text from the PDF.")
+            
+        print(f"[Local OCR] Extracted {len(extracted_text)} characters. Parsing via Gemini...")
+        parsed_json = self.parse_resume(extracted_text, filename)
+        return parsed_json
+
+    # ------------------------------------------------------------------ #
