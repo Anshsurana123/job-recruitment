@@ -148,3 +148,103 @@ class LocalOCREngine:
             )[0]
             
         print(f"      - Page {page_idx + 1}/{total_pages} vision extraction complete.", flush=True)
+        return page_idx, output_text.strip()
+
+    def extract_text_qwen(self, pdf_bytes: bytes) -> str:
+        """
+        Extracts structured text locally from a scanned PDF page-by-page
+        using the Qwen2-VL visual model (rendered via PyMuPDF).
+        Can process pages concurrently using a thread pool if LOCAL_OCR_QWEN_WORKERS > 1.
+        """
+        self._init_qwen()
+        
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        total_pages = len(doc)
+        
+        print(f"[Local OCR] Processing scanned PDF visually using Qwen2-VL-2B-Instruct ({total_pages} pages)...", flush=True)
+        
+        tasks = []
+        for page_idx in range(total_pages):
+            page = doc[page_idx]
+            # Render page as PNG in memory (150 DPI is balanced for quality and speed)
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            tasks.append((page_idx, img_bytes))
+            
+        # Determine number of concurrent worker threads
+        max_workers = min(total_pages, self.qwen_workers)
+        
+        full_text_parts = [None] * total_pages
+        
+        if max_workers > 1:
+            print(f"[Local OCR] Parallelizing page processing using ThreadPoolExecutor with {max_workers} workers...", flush=True)
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._process_page_qwen, idx, img_bytes, total_pages): idx
+                    for idx, img_bytes in tasks
+                }
+                for future in futures:
+                    idx, page_text = future.result()
+                    full_text_parts[idx] = page_text
+        else:
+            print(f"[Local OCR] Processing pages sequentially (workers=1 to conserve memory/CPU threads)...", flush=True)
+            for idx, img_bytes in tasks:
+                _, page_text = self._process_page_qwen(idx, img_bytes, total_pages)
+                full_text_parts[idx] = page_text
+                
+        return "\n\n--- PAGE BREAK ---\n\n".join(full_text_parts)
+
+    def _process_page_easyocr(self, page_idx: int, img_bytes: bytes, width: int) -> tuple[int, str]:
+        """Processes a single page visually via EasyOCR."""
+        results = self._model.readtext(img_bytes)
+        
+        W = width
+        left_col = []
+        right_col = []
+        crossing_boxes = 0
+        
+        # Classify bounding boxes
+        for bbox, text, conf in results:
+            x_coords = [p[0] for p in bbox]
+            y_coords = [p[1] for p in bbox]
+            
+            x_min, x_max = min(x_coords), max(x_coords)
+            y_min = min(y_coords)
+            x_center = sum(x_coords) / 4.0
+            
+            # Check if text spans across the vertical center line
+            is_crossing = (x_min < 0.4 * W) and (x_max > 0.6 * W)
+            if is_crossing:
+                crossing_boxes += 1
+            
+            box_info = {"bbox": bbox, "text": text, "x_center": x_center, "y_min": y_min, "x_min": x_min}
+            
+            if x_center < 0.5 * W:
+                left_col.append(box_info)
+            else:
+                right_col.append(box_info)
+                
+        # 2-column or 1-column layout heuristical decision
+        total_boxes = len(results)
+        is_two_column = False
+        if total_boxes > 0:
+            crossing_ratio = crossing_boxes / total_boxes
+            if crossing_ratio < 0.15:
+                is_two_column = True
+                
+        if is_two_column:
+            # Group and sort left and right columns vertically (top to bottom)
+            left_col.sort(key=lambda b: b["y_min"])
+            right_col.sort(key=lambda b: b["y_min"])
+            
+            left_text = "\n".join([b["text"] for b in left_col])
+            right_text = "\n".join([b["text"] for b in right_col])
+            page_text = f"{left_text}\n\n{right_text}"
+        else:
+            # 1-column page: Sort all vertically, grouping boxes on same line (within 10 pixels)
+            all_boxes = []
+            for bbox, text, conf in results:
+                y_coords = [p[1] for p in bbox]
+                x_coords = [p[0] for p in bbox]
+                all_boxes.append({
