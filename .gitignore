@@ -1,0 +1,38 @@
+# Git Ignore file for SwarmMatrix
+
+# Secret files containing API Keys
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env*.local
+
+# Python standard ignores
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Databases and Vector Indexes
+chroma_db/
+.chroma/
+
+# Dynamic Output and Test Reports
+talent_radar_output.*
+output.*
+*.csv
+*.json
+!candidates.json
+
+# IDEs and configuration files
+.vscode/
+.idea/
+.DS_Store
+
+# Virtual Environments
+venv/
+.venv/
+env/
+lib/
+bin/
+include/

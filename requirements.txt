@@ -1,0 +1,28 @@
+# Core Web Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ML / Transformers (CPU-only torch installed separately in Dockerfile)
+transformers
+safetensors
+accelerate
+
+# Google GenAI SDK (Gemini Gateway)
+google-genai
+google-generativeai
+
+# PDF Processing
+pdfplumber
+pypdf
+pymupdf
+qwen-vl-utils
+easyocr
+torchvision
+opencv-python-headless
+
+# Data & Utilities
+pandas
+pydantic
+python-dotenv
+requests
