@@ -123,3 +123,163 @@ class GeminiResumeParser:
             raise ValueError("GEMINI_API_KEY is not set in the environment or .env file.")
         self._url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
 
+    # ------------------------------------------------------------------ #
+    #  Shared candidate schema (single object)                            #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _candidate_schema():
+        """Returns the Gemini REST JSON schema for a single candidate object."""
+        return {
+            "type": "OBJECT",
+            "properties": {
+                "name": {
+                    "type": "STRING",
+                    "description": "Candidate's full name"
+                },
+                "current_title": {
+                    "type": "STRING",
+                    "description": "Candidate's current professional title or role (e.g. Senior React Developer, Financial Analyst, Legal Counsel, Chief Medical Officer)"
+                },
+                "years_experience": {
+                    "type": "NUMBER",
+                    "description": "Total number of years of experience as a floating point number (e.g. 6.5)"
+                },
+                "career_history": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "title": { "type": "STRING", "description": "Job title" },
+                            "company": { "type": "STRING", "description": "Company name" },
+                            "start_date": { "type": "STRING", "description": "Start date in YYYY-MM-DD or YYYY-MM format" },
+                            "end_date": { "type": "STRING", "description": "End date in YYYY-MM-DD, YYYY-MM format, or 'Present'" }
+                        },
+                        "required": ["title", "company", "start_date"]
+                    },
+                    "description": "Professional experience history"
+                },
+                "skills_listed": {
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "STRING"
+                    },
+                    "description": "List of professional and domain-specific skills mentioned or demonstrated in the resume (e.g. React, Financial Modeling, Litigation, Patient Care)"
+                },
+                "last_active": {
+                    "type": "STRING",
+                    "description": "Approximate date of last resume update or activity in YYYY-MM-DD format. If no date can be extracted from the PDF, set this field to null."
+                },
+                "education": {
+                    "type": "STRING",
+                    "description": "University education degree, major, and graduation details"
+                },
+                "location": {
+                    "type": "STRING",
+                    "description": "City and State / Country of candidate (e.g. San Francisco, CA or Remote)"
+                }
+            },
+            "required": ["name", "current_title", "years_experience", "career_history", "skills_listed", "education", "location"]
+        }
+
+    # ------------------------------------------------------------------ #
+    #  Resilient HTTP POST with exponential backoff                       #
+    # ------------------------------------------------------------------ #
+    def _call_gemini(self, payload: dict) -> dict:
+        """
+        POST to the Gemini generateContent endpoint with resilient retry logic.
+        Retries on transient HTTP errors (429, 500, 502, 503, 504) and
+        network-level failures (ConnectionError, Timeout) up to 6 attempts
+        with exponential backoff (2s → 4s → 8s → 16s → 32s → 64s).
+        """
+        headers = {"Content-Type": "application/json"}
+        max_retries = 6
+        base_delay = 2.0
+
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(self._url, headers=headers, json=payload, timeout=120)
+
+                if response.status_code == 200:
+                    return response.json()
+
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    import random
+                    jitter = random.uniform(0.8, 1.2)
+                    delay = (base_delay * (2 ** attempt)) * jitter
+                    print(f"[Retry] Gemini API returned {response.status_code}. "
+                          f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(delay)
+                    last_error = RuntimeError(
+                        f"Gemini API returned error {response.status_code}: {response.text[:300]}"
+                    )
+                    continue
+
+                # Non-retryable error (e.g. 400 Bad Request, 401 Unauthorized)
+                raise RuntimeError(
+                    f"Gemini API returned non-retryable error {response.status_code}: {response.text[:500]}"
+                )
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as net_err:
+                import random
+                jitter = random.uniform(0.8, 1.2)
+                delay = (base_delay * (2 ** attempt)) * jitter
+                print(f"[Retry] Network error: {type(net_err).__name__}. "
+                      f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(delay)
+                last_error = net_err
+                continue
+
+        raise RuntimeError(
+            f"Gemini API request failed after {max_retries} retries. Last error: {last_error}"
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Single resume parsing (original interface, preserved)              #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def strip_json_fences(text: str) -> str:
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        return text
+
+    def parse_resume(self, raw_text: str, filename: str = "") -> dict:
+        """
+        Sends the raw extracted text of a resume to the Gemini API and retrieves a structured JSON candidate profile.
+        """
+        system_instruction = (
+            "You are an expert recruiter and resume parser. "
+            "Analyze the provided raw resume text and extract candidate details into the specified JSON structure. "
+            "Determine the total years_experience carefully as a float. "
+            "Format dates in YYYY-MM-DD or YYYY-MM. If a job is current or ongoing, the end_date MUST be 'Present'. "
+            "Extract professional and domain-specific skills accurately and list them in the skills_listed array. "
+            "Crucial: Pay close attention to extracting the candidate's ACTUAL personal full name, typically located at "
+            "the very top of the resume in a large font. Do NOT populate the name field with job titles, headers, 'Unknown', 'Not specified', or 'N/A'."
+        )
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": f"Raw Resume Text:\n{raw_text}"}
+                    ]
+                }
+            ],
+            "systemInstruction": {
+                "parts": [
+                    {"text": system_instruction}
+                ]
+            },
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": self._candidate_schema(),
+                "temperature": 0.1
+            }
+        }
+
