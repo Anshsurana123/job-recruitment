@@ -1,0 +1,13 @@
+Job Title: Lead Machine Learning Engineer
+Seniority Level: Lead
+Required Skills: Python, PyTorch, Transformers, LLMs, NLP, LangChain, MLflow, Triton, CUDA
+Nice to Have: TensorFlow, Kubeflow, Model Quantization, TensorRT, CUDA optimization
+
+We are looking for a Lead Machine Learning Engineer to spearhead our AI research and deployment initiatives. 
+You will design and train advanced deep learning architectures, fine-tune massive Large Language Models, and productionize them at scale. 
+You must possess rich knowledge of model compression, Triton dynamic batching, TensorRT compilation, and CUDA GPU memory optimization.
+
+Key Responsibilities:
+- Fine-tune, evaluate, and scale proprietary LLMs and embedding models.
+- Optimize inference speed and throughput on specialized GPU clusters.
+- Establish robust automated ML monitoring, drift detection, and CI/CD pipelines.
