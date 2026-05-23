@@ -158,3 +158,46 @@ class ResumeTextChunker:
             
         return chunks
 
+# ===================================================================== #
+#  Phase 3 & 4: Model Matrix Loader & Swarm Evaluation Engine           #
+# ===================================================================== #
+
+# Sector macro model weight mapping
+SECTOR_MODEL_MAP = {
+    "TECH": "microsoft/codebert-base",
+    "FIN": "ProsusAI/finbert",
+    "HEALTH": "dmis-lab/biobert-base-cased-v1.2",
+    "LEGAL": "nlpaueb/legal-bert-small-uncased",
+    "REAL": "llmware/industry-bert-asset-management-v0.1",
+    "MANU": "cea-list-ia/ManufactuBERT",
+    "COMM": "nlptown/bert-base-multilingual-uncased-sentiment",
+    "LOGI": "inovex/multi2convai-logistics-en-bert",
+    "MEDIA": "cardiffnlp/twitter-roberta-base",
+    "ENERGY": "Master-AI-Lab/EnergyBERT",
+    "EDU": "vasugoel/K-12BERT",
+    "GOV": "ESGBERT/GovRoBERTa-governance",
+    # General fallback cross-encoder
+    "DEFAULT": "cross-encoder/ms-marco-MiniLM-L-6-v2"
+}
+
+import threading
+
+# Thread lock for safe model caching
+cache_lock = threading.Lock()
+
+# Module-level singleton cache: sector_token -> loaded SwarmEvaluator instance
+_EVALUATOR_CACHE: dict[str, "SwarmEvaluator"] = {}
+
+def get_cached_evaluator(sector_token: str) -> "SwarmEvaluator":
+    """Returns a loaded SwarmEvaluator for the given sector, cached across requests."""
+    key = sector_token.upper()
+    with cache_lock:
+        if key not in _EVALUATOR_CACHE:
+            evaluator = SwarmEvaluator(key)
+            evaluator.load_model()
+            _EVALUATOR_CACHE[key] = evaluator
+            print(f"[Swarm Cache] Cached evaluator for sector: {key}")
+        else:
+            print(f"[Swarm Cache] HIT — reusing loaded model for sector: {key}")
+        return _EVALUATOR_CACHE[key]
+
