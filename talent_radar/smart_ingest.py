@@ -348,3 +348,222 @@ def _process_batch(
                 job.failed_count += 1
                 job.failed_files.append(filename)
 
+    # Checkpoint after this batch completes
+    with job._lock:
+        existing_candidates.extend(new_records)
+
+    _checkpoint(existing_candidates, candidates_path, job._lock)
+
+    return new_records
+
+def _build_candidate_record(
+    parsed: dict,
+    raw_text: str,
+    filename: str,
+    existing_candidates: list[dict],
+    existing_ids: set[str],
+    job: SmartIngestJob,
+) -> dict | None:
+    """Builds a validated candidate record from a parsed Gemini response.
+    If a duplicate candidate (same name) is detected, merges the new data in-place
+    into the existing candidate record and returns None to prevent duplication."""
+    candidate_name = str(parsed.get("name", "Unknown Candidate")).strip()
+    name_not_extracted = bool(parsed.get("name_not_extracted", False))
+
+    # Clean career history
+    cleaned_history = []
+    for entry in parsed.get("career_history", []):
+        if isinstance(entry, dict):
+            cleaned_history.append({
+                "title": str(entry.get("title", "Developer")),
+                "company": str(entry.get("company", "Company")),
+                "start_date": str(entry.get("start_date", "2020-01-01")),
+                "end_date": entry.get("end_date"),
+            })
+
+    # Thread-safe duplicate check
+    with job._lock:
+        if candidate_name and candidate_name.lower() != "unknown candidate" and not name_not_extracted:
+            existing_cand = next((c for c in existing_candidates if c.get("name", "").strip().lower() == candidate_name.lower()), None)
+            if existing_cand:
+                # Merge in-place
+                existing_cand["name_not_extracted"] = False
+                if parsed.get("current_title"):
+                    existing_cand["current_title"] = str(parsed.get("current_title"))
+                existing_cand["years_experience"] = max(
+                    float(parsed.get("years_experience", 1.0)),
+                    float(existing_cand.get("years_experience", 1.0))
+                )
+                if parsed.get("education"):
+                    existing_cand["education"] = str(parsed.get("education"))
+                if parsed.get("location"):
+                    existing_cand["location"] = str(parsed.get("location"))
+                if parsed.get("last_active"):
+                    existing_cand["last_active"] = str(parsed.get("last_active"))
+                if raw_text or parsed.get("resume_text"):
+                    existing_cand["resume_text"] = str(parsed.get("resume_text", raw_text))
+                existing_cand["source_file"] = filename
+
+                # Merge skills_listed
+                skills_union = list(dict.fromkeys(
+                    [s.strip() for s in existing_cand.get("skills_listed", [])] +
+                    [s.strip() for s in parsed.get("skills_listed", [])]
+                ))
+                existing_cand["skills_listed"] = skills_union
+
+                # Merge career_history
+                history_by_key = {}
+                for job_entry in existing_cand.get("career_history", []) + cleaned_history:
+                    key = (
+                        job_entry.get("company", "").strip().lower(),
+                        job_entry.get("title", "").strip().lower(),
+                        job_entry.get("start_date", "").strip()
+                    )
+                    history_by_key[key] = job_entry
+                existing_cand["career_history"] = list(history_by_key.values())
+
+                print(f"[Deduplication] Merged duplicate candidate '{candidate_name}' in-place.")
+                return None
+
+        # If no duplicate, create new record
+        max_idx = 0
+        for cid in existing_ids:
+            if cid and cid.startswith("cand_"):
+                try:
+                    idx_part = int(cid.split("_")[1])
+                    if idx_part > max_idx:
+                        max_idx = idx_part
+                except (IndexError, ValueError):
+                    pass
+        next_idx = max_idx + 1
+        cand_id = f"cand_{next_idx:04d}"
+        existing_ids.add(cand_id)
+
+    return {
+        "candidate_id": cand_id,
+        "name": candidate_name,
+        "name_not_extracted": name_not_extracted,
+        "current_title": str(parsed.get("current_title", "Software Engineer")),
+        "years_experience": float(parsed.get("years_experience", 1.0)),
+        "career_history": cleaned_history,
+        "skills_listed": parsed.get("skills_listed", []),
+        "last_active": parsed.get("last_active") if parsed.get("last_active") else None,
+        "education": str(parsed.get("education", "")),
+        "location": str(parsed.get("location", "Remote")),
+        "resume_text": str(parsed.get("resume_text", raw_text)),
+        "source_file": filename,
+    }
+
+
+# -------------------------------------------------------------------- #
+#  Top-Level Orchestrator                                               #
+# -------------------------------------------------------------------- #
+def run_smart_ingest(
+    zip_bytes: bytes,
+    job: SmartIngestJob,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    max_workers: int = DEFAULT_MAX_WORKERS,
+):
+    """
+    Top-level orchestrator for high-volume ZIP ingestion.
+
+    1. Extract all PDFs from the ZIP archive (in-memory)
+    2. Skip already-parsed files (source_file checkpoint dedup)
+    3. Batch remaining files into groups of `batch_size`
+    4. Process batches concurrently with ThreadPoolExecutor
+    5. Checkpoint candidates.json after every completed batch
+    6. Re-index ChromaDB once at the very end
+    """
+    candidates_path = base_dir / "candidates.json"
+
+    try:
+        job.status = "running"
+        print(f"\n{'='*60}")
+        print(f"SMART INGEST ENGINE — Job {job.job_id[:8]}...")
+        print(f"{'='*60}")
+
+        # ---- Step 1: Extract PDFs ----
+        print("[1/5] Extracting PDFs from ZIP archive...")
+        pdf_items = _extract_pdfs_from_zip(zip_bytes)
+        job.total_files = len(pdf_items)
+        print(f"      Found {len(pdf_items)} valid PDF files.")
+
+        if not pdf_items:
+            job.status = "error"
+            job.error_message = "No valid PDF files found in the ZIP archive."
+            return
+
+        # ---- Step 2: Load existing candidates & skip parsed ----
+        print("[2/5] Loading existing candidate pool...")
+        existing_candidates = []
+        if candidates_path.exists():
+            try:
+                with open(candidates_path, "r", encoding="utf-8") as f:
+                    existing_candidates = json.load(f)
+            except Exception:
+                existing_candidates = []
+
+        existing_ids = {c.get("candidate_id") for c in existing_candidates}
+
+        pdf_items = _skip_already_parsed(pdf_items, existing_candidates)
+        job.skipped_files = job.total_files - len(pdf_items)
+
+        if not pdf_items:
+            print("[Done] All files already parsed. Nothing to do.")
+            job.status = "done"
+            return
+
+        # ---- Step 3: Build batches ----
+        print(f"[3/5] Building batches of {batch_size}...")
+        batches = _build_batches(pdf_items, batch_size)
+        print(f"      Created {len(batches)} batches from {len(pdf_items)} files.")
+
+        # ---- Step 4: Process batches concurrently ----
+        print(f"[4/5] Processing with {max_workers} concurrent workers...")
+        parser = GeminiResumeParser()
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _process_batch,
+                    batch,
+                    parser,
+                    job,
+                    existing_candidates,
+                    existing_ids,
+                    candidates_path,
+                ): batch_idx
+                for batch_idx, batch in enumerate(batches)
+            }
+
+            for future in as_completed(futures):
+                batch_idx = futures[future]
+                try:
+                    future.result()
+                    print(f"      Batch {batch_idx + 1}/{len(batches)} completed. "
+                          f"Progress: {job.percent}%")
+                except Exception as e:
+                    print(f"      Batch {batch_idx + 1}/{len(batches)} failed: {e}")
+
+        # ---- Step 5: Re-index ChromaDB once ----
+        print("[5/5] Re-indexing ChromaDB vector store (Legacy indexer)...")
+        try:
+            from talent_radar.ingest import main as run_ingest
+            run_ingest()
+            print("      Re-indexing completed successfully.")
+        except Exception as ingest_err:
+            print(f"      [Warning] Deprecated ChromaDB indexing skipped/failed (non-fatal): {ingest_err}")
+
+        job.status = "done"
+        print(f"\n{'='*60}")
+        print(f"SMART INGEST COMPLETE — "
+              f"Parsed: {job.parsed_count}, "
+              f"Skipped: {job.skipped_files}, "
+              f"Failed: {job.failed_count}")
+        print(f"{'='*60}\n")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        job.status = "error"
+        job.error_message = str(e)
