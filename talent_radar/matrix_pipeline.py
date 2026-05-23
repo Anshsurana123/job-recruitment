@@ -201,3 +201,55 @@ def get_cached_evaluator(sector_token: str) -> "SwarmEvaluator":
             print(f"[Swarm Cache] HIT — reusing loaded model for sector: {key}")
         return _EVALUATOR_CACHE[key]
 
+class SwarmEvaluator:
+    def __init__(self, sector_token: str):
+        self.sector_token = sector_token.upper()
+        self.model_name = SECTOR_MODEL_MAP.get(self.sector_token, SECTOR_MODEL_MAP["DEFAULT"])
+        self.tokenizer = None
+        self.model = None
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    def load_model(self):
+        """Lazy load HuggingFace models keeping runtime footprint minimal."""
+        if self.model is not None:
+            return
+            
+        print(f"[Swarm Matrix] Spawning dynamic SLM Swarm Node for sector: {self.sector_token} on {self.device.upper()}")
+        print(f"[Swarm Matrix] Loading tokenizer and model: {self.model_name}...")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        
+        # Ensure pad token is set for batched processing
+        if self.tokenizer.pad_token is None:
+            if self.tokenizer.eos_token is not None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            else:
+                self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        
+        # Direct probability distribution / sequence regression setup
+        if self.model_name == SECTOR_MODEL_MAP["DEFAULT"]:
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                self.model_name, 
+                num_labels=1, 
+                ignore_mismatched_sizes=True
+            )
+        else:
+            from transformers import AutoModel
+            self.model = AutoModel.from_pretrained(self.model_name)
+
+        self.model.to(self.device)
+        self.model.eval()
+        
+        # Compile model only when running on GPU (CUDA) to avoid long hangs on CPU-only/Windows environments
+        if self.device == "cuda":
+            print("[Swarm Matrix] GPU detected. Attempting torch.compile optimization...")
+            try:
+                self.model = torch.compile(self.model)
+                print("[Swarm Matrix] torch.compile optimization succeeded.")
+            except Exception as e:
+                print(f"[Swarm Matrix] Skipping torch.compile: {e}")
+        else:
+            print("[Swarm Matrix] CPU detected. Skipping torch.compile to avoid startup hangs.")
+            
+        print(f"[Swarm Matrix] Swarm node successfully loaded and active.")
+
