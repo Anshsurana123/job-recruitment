@@ -88,3 +88,63 @@ class LocalOCREngine:
                 print(f"[Local OCR] Loading EasyOCR English reader (GPU Available: {gpu_avail})...", flush=True)
                 import easyocr
                 self._model = easyocr.Reader(['en'], gpu=gpu_avail)
+                print(f"[Local OCR] EasyOCR English reader loaded successfully. Parallel workers: {self.easyocr_workers}", flush=True)
+
+    def _process_page_qwen(self, page_idx: int, img_bytes: bytes, total_pages: int) -> tuple[int, str]:
+        """
+        Processes a single page visually via Qwen2-VL.
+        This operation is executed inside a ThreadPoolExecutor.
+        """
+        from qwen_vl_utils import process_vision_info
+        
+        image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        
+        prompt = (
+            "You are an expert OCR engine. Extract all text and structure from this resume page accurately. "
+            "Output the content in clean, structured Markdown format. Preserve the visual column layout and "
+            "reading order perfectly. Do not add any preamble, conversational introductions, or explanations. "
+            "Output ONLY the markdown representation of the document."
+        )
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image", 
+                        "image": image,
+                        "min_pixels": self.qwen_min_patches * 28 * 28,
+                        "max_pixels": self.qwen_max_patches * 28 * 28
+                    },
+                    {"type": "text", "text": prompt}
+                ]
+            }
+        ]
+        
+        # Prepare vision inputs (this processing is thread-safe)
+        text = self._processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        
+        inputs = self._processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt"
+        )
+        
+        # Move to target model device
+        inputs = inputs.to(self._model.device)
+        
+        print(f"      - Page {page_idx + 1}/{total_pages}: Running local Qwen2-VL vision model inference (min_patches={self.qwen_min_patches}, max_patches={self.qwen_max_patches})...", flush=True)
+        
+        with torch.no_grad():
+            generated_ids = self._model.generate(**inputs, max_new_tokens=2048)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self._processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+            
+        print(f"      - Page {page_idx + 1}/{total_pages} vision extraction complete.", flush=True)
