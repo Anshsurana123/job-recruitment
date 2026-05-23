@@ -323,3 +323,100 @@ class GeminiResumeParser:
         return parsed_json
 
     # ------------------------------------------------------------------ #
+    #  Batch resume parsing (15 resumes per request)                      #
+    # ------------------------------------------------------------------ #
+    def parse_resume_batch(self, texts_with_filenames: list[tuple[str, str]]) -> list[dict]:
+        """
+        Sends up to 15 resumes in a single Gemini API call and returns
+        a list of parsed candidate JSON objects (one per resume, in order).
+
+        Args:
+            texts_with_filenames: List of (filename, raw_text) tuples.
+
+        Returns:
+            List of parsed candidate dicts, one per input resume.
+
+        Raises:
+            RuntimeError if batch parsing fails (caller should fallback to individual).
+        """
+        if not texts_with_filenames:
+            return []
+
+        # Build the combined prompt with clear delimiters
+        resume_sections = []
+        for idx, (filename, raw_text) in enumerate(texts_with_filenames, 1):
+            resume_sections.append(
+                f"===== RESUME {idx} ({filename}) =====\n{raw_text}"
+            )
+        combined_prompt = "\n\n".join(resume_sections)
+
+        system_instruction = (
+            "You are an expert recruiter and resume parser. "
+            f"You will receive {len(texts_with_filenames)} resumes separated by '===== RESUME N (filename) =====' delimiters. "
+            "Parse EACH resume independently into a separate JSON object. "
+            "Return a JSON array where element [0] corresponds to RESUME 1, element [1] to RESUME 2, etc. "
+            "The output array MUST contain exactly one object per input resume, in the same order. "
+            "Determine the total years_experience carefully as a float. "
+            "Format dates in YYYY-MM-DD or YYYY-MM. If a job is current or ongoing, the end_date MUST be 'Present'. "
+            "Extract professional and domain-specific skills accurately and list them in the skills_listed array. "
+            "Crucial: Pay close attention to extracting the candidate's ACTUAL personal full name. Do NOT populate "
+            "the name field with job titles, headers, 'Unknown', 'Not specified', or 'N/A'."
+        )
+
+        # Batch schema: an ARRAY of candidate objects
+        batch_schema = {
+            "type": "ARRAY",
+            "items": self._candidate_schema()
+        }
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": combined_prompt}
+                    ]
+                }
+            ],
+            "systemInstruction": {
+                "parts": [
+                    {"text": system_instruction}
+                ]
+            },
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": batch_schema,
+                "temperature": 0.1
+            }
+        }
+
+        response_data = self._call_gemini(payload)
+
+        try:
+            json_text = response_data["candidates"][0]["content"]["parts"][0]["text"]
+            json_text = self.strip_json_fences(json_text)
+            parsed_array = json.loads(json_text)
+
+            if not isinstance(parsed_array, list):
+                raise RuntimeError(f"Batch response is not an array: {type(parsed_array)}")
+
+            # Attach original raw text to each parsed candidate and run name validator
+            for idx, parsed in enumerate(parsed_array):
+                if idx < len(texts_with_filenames):
+                    filename, raw_text = texts_with_filenames[idx]
+                    if "resume_text" not in parsed:
+                        parsed["resume_text"] = raw_text
+
+                    parsed["name_not_extracted"] = False
+
+            # Validate count matches
+            if len(parsed_array) != len(texts_with_filenames):
+                print(f"[Warning] Batch returned {len(parsed_array)} candidates "
+                      f"but expected {len(texts_with_filenames)}. Will use what we got.")
+
+            return parsed_array
+
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            raise RuntimeError(
+                f"Failed to parse batch response from Gemini API: {str(e)}. "
+                f"Response was: {json.dumps(response_data)[:500]}"
+            )
