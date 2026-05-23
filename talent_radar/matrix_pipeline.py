@@ -96,3 +96,65 @@ class GeminiGateway:
                 top_keywords=fallback_keywords
             )
 
+# ===================================================================== #
+#  Phase 2: Structural Fragmenting (The Chunking Engine)               #
+# ===================================================================== #
+
+class ResumeTextChunker:
+    @staticmethod
+    def chunk_text(text: str, max_words: int = 300) -> list[str]:
+        """Splits candidate resume text into sentence-boundary aligned paragraphs under 300 words."""
+        if not text or not text.strip():
+            return []
+            
+        paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+        chunks = []
+        current_chunk = []
+        current_word_count = 0
+        
+        for para in paragraphs:
+            para_words = para.split()
+            if not para_words:
+                continue
+                
+            if current_word_count + len(para_words) <= max_words:
+                current_chunk.append(para)
+                current_word_count += len(para_words)
+            else:
+                # Flush existing chunk
+                if current_chunk:
+                    chunks.append("\n".join(current_chunk))
+                
+                # If a single paragraph is larger than max_words, break it by sentences
+                if len(para_words) > max_words:
+                    sentences = para.replace('! ', '. ').replace('? ', '. ').split('. ')
+                    temp_chunk = []
+                    temp_count = 0
+                    for sent in sentences:
+                        sent = sent.strip()
+                        if not sent:
+                            continue
+                        sent_words = sent.split()
+                        if temp_count + len(sent_words) <= max_words:
+                            temp_chunk.append(sent)
+                            temp_count += len(sent_words)
+                        else:
+                            if temp_chunk:
+                                chunks.append(". ".join(temp_chunk) + ".")
+                            temp_chunk = [sent]
+                            temp_count = len(sent_words)
+                    if temp_chunk:
+                        current_chunk = temp_chunk
+                        current_word_count = temp_count
+                    else:
+                        current_chunk = []
+                        current_word_count = 0
+                else:
+                    current_chunk = [para]
+                    current_word_count = len(para_words)
+                    
+        if current_chunk:
+            chunks.append("\n".join(current_chunk))
+            
+        return chunks
+
