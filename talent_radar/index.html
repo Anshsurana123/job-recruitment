@@ -1798,3 +1798,1003 @@
         <div style="font-size: 14px; font-weight: 600; color: var(--color-text-main);">
             📊 Compare: <span id="compare-count" style="color: var(--color-primary); font-weight: 700;">0</span> / 3 candidates
         </div>
+        <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" onclick="clearComparison()" style="padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer;">
+                Clear
+            </button>
+            <button onclick="launchComparisonModal()" style="padding: 6px 16px; font-size: 12px; border-radius: 8px; cursor: pointer; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none; color: white; font-weight: 700; box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);">
+                Compare Selected
+            </button>
+        </div>
+    </div>
+
+    <!-- Comparison Modal -->
+    <div id="compare-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(8, 11, 17, 0.9); z-index: 1000; backdrop-filter: blur(12px); align-items: center; justify-content: center; padding: 24px;">
+        <div class="compare-modal-content" style="background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: 20px; width: 100%; max-width: 1200px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-glow); display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <h2 style="font-size: 20px; font-weight: 800; color: var(--color-primary); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">📊 Side-by-Side Candidate Comparison</h2>
+                <button onclick="closeCompareModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; transition: var(--transition-smooth);">&times;</button>
+            </div>
+            <div id="compare-modal-body" style="padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; overflow-x: auto;">
+                <!-- Filled dynamically -->
+            </div>
+            
+            <!-- AI Synthesis Analysis Section -->
+            <div id="compare-ai-synthesis-section" style="padding: 0 24px 24px 24px; display: none; flex-direction: column; gap: 16px; border-top: 1px solid rgba(255,255,255,0.05); margin-top: 10px;">
+                <h3 style="font-size: 15px; font-weight: 700; color: var(--color-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 20px;">🤖 Deep-Matrix AI Synthesis Report</h3>
+                <div id="compare-ai-synthesis-content" style="background: rgba(139, 92, 246, 0.03); border: 1px solid rgba(139, 92, 246, 0.15); border-radius: 12px; padding: 20px; color: var(--color-text-main); font-size: 14px; line-height: 1.6; display: flex; flex-direction: column; gap: 16px;">
+                    <!-- Filled dynamically from API -->
+                </div>
+            </div>
+            
+            <!-- Generate AI Synthesis Button -->
+            <div style="padding: 16px 24px; background: rgba(0,0,0,0.2); display: flex; justify-content: flex-end; border-top: 1px solid rgba(255,255,255,0.05); border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
+                <button id="generate-compare-ai-btn" class="btn" style="width: auto; padding: 10px 24px; font-size: 14px;" onclick="generateAiComparisonSynthesis()">
+                    ✨ Run Head-to-Head AI Analysis
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Front-End Javascript Interactivity -->
+    <script>
+        const API_BASE = window.location.origin;
+        let templates = {};
+
+        // On load
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchStatistics();
+            fetchTemplates();
+        });
+
+
+
+        function toggleStepDetails(id) {
+            const box = document.getElementById(id);
+            const isVisible = box.style.display === 'block';
+            
+            // Collapse all
+            document.querySelectorAll('.step-details-box').forEach(el => el.style.display = 'none');
+            
+            if (!isVisible) {
+                box.style.display = 'block';
+            }
+        }
+
+        // Fetch DB insights
+        async function fetchStatistics() {
+            try {
+                const res = await fetch(`${API_BASE}/api/statistics`);
+                const data = await res.json();
+                if (data.status !== "error") {
+                    document.getElementById('db-total-count').innerText = data.total_indexed;
+                }
+            } catch(e) {
+                console.error("Backend offline, statistics will fallback.", e);
+            }
+        }
+
+        // Fetch JDs from backend
+        async function fetchTemplates() {
+            try {
+                const res = await fetch(`${API_BASE}/api/templates`);
+                const data = await res.json();
+                templates = {};
+                
+                const container = document.getElementById('templates-container');
+                container.innerHTML = "";
+                
+                data.forEach((tpl, idx) => {
+                    templates[tpl.id] = tpl;
+                    
+                    const chip = document.createElement('div');
+                    chip.className = `template-chip ${idx === 0 ? 'active' : ''}`;
+                    chip.innerText = tpl.name;
+                    chip.onclick = () => {
+                        document.querySelectorAll('.template-chip').forEach(el => el.classList.remove('active'));
+                        chip.classList.add('active');
+                        loadSampleTemplate(tpl.id);
+                    };
+                    container.appendChild(chip);
+                });
+                
+                // Load default
+                if (data.length > 0) {
+                    loadSampleTemplate(data[0].id);
+                }
+            } catch(e) {
+                console.error("Templates loading failed.", e);
+            }
+        }
+
+        function loadSampleTemplate(id) {
+            if (templates[id]) {
+                document.getElementById('job-description').value = templates[id].content;
+                document.getElementById('seniority-level').value = templates[id].seniority;
+                document.getElementById('sector-level').value = "AUTO";
+            }
+        }
+
+        // Recruiter Toolkit State & Helper Functions
+        let currentTab = 'all'; 
+        let activeCandidates = []; 
+        let activeSector = 'TECH';
+        let selectedCompareIds = [];
+
+
+        function getShortlist() {
+            try {
+                return JSON.parse(localStorage.getItem('talent_radar_shortlist') || '{}');
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveShortlist(shortlist) {
+            localStorage.setItem('talent_radar_shortlist', JSON.stringify(shortlist));
+            updateShortlistBadgeCount();
+        }
+
+        function updateShortlistBadgeCount() {
+            const shortlist = getShortlist();
+            const count = Object.keys(shortlist).length;
+            const countEl = document.getElementById('shortlist-count');
+            if (countEl) countEl.innerText = count;
+        }
+
+        function toggleShortlist(candId) {
+            const shortlist = getShortlist();
+            if (shortlist[candId]) {
+                delete shortlist[candId];
+            } else {
+                const cand = activeCandidates.find(c => c.id === candId);
+                if (cand) {
+                    shortlist[candId] = cand;
+                }
+            }
+            saveShortlist(shortlist);
+            
+            // Re-render
+            renderCandidates(activeCandidates);
+            
+            // Update active drawer button if open
+            const drawerBtn = document.getElementById('drawer-shortlist-btn');
+            if (drawerBtn) {
+                const isShortlisted = !!shortlist[candId];
+                drawerBtn.className = `btn-secondary ${isShortlisted ? 'active' : ''}`;
+                drawerBtn.innerHTML = `❤️ ${isShortlisted ? 'Shortlisted' : 'Shortlist'}`;
+                drawerBtn.style.color = isShortlisted ? 'var(--color-warning)' : 'var(--color-text-muted)';
+            }
+        }
+
+        function switchCandidatesTab(tabName) {
+            currentTab = tabName;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tabName === 'all') {
+                document.getElementById('tab-all').classList.add('active');
+            } else {
+                document.getElementById('tab-shortlist').classList.add('active');
+            }
+            renderCandidates(activeCandidates);
+        }
+
+
+
+        // Run End-to-End Search Pipeline
+        async function executeRanking() {
+            const runBtn = document.getElementById('run-btn');
+            const jd = document.getElementById('job-description').value;
+            const seniority = document.getElementById('seniority-level').value;
+            const topK = document.getElementById('top-k-slider').value;
+            const sector = document.getElementById('sector-level').value;
+
+            if (!jd.trim()) {
+                alert("Please enter a job description.");
+                return;
+            }
+
+            // Disable button & animate
+            runBtn.disabled = true;
+            runBtn.innerHTML = `<span>🌀</span> Scanning Candidates...`;
+            
+            // Set pipelines state to active
+            resetPipelineSteps();
+            setStepState('step-explosion', 'badge-explosion', 'Running...', 'active');
+
+            try {
+                const sSlider = document.getElementById('weight-semantic-slider');
+                const vSlider = document.getElementById('weight-velocity-slider');
+                const fSlider = document.getElementById('weight-freshness-slider');
+
+                const res = await fetch(`${API_BASE}/api/rank`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_description: jd,
+                        seniority_level: seniority,
+                        top_k: parseInt(topK),
+                        sector: sector,
+                        semantic_weight: parseFloat(sSlider.value) / 100,
+                        velocity_weight: parseFloat(vSlider.value) / 100,
+                        freshness_weight: parseFloat(fSlider.value) / 100
+                    })
+                });
+
+                if (!res.ok) {
+                    let errDetail = "Pipeline network error";
+                    try {
+                        const errData = await res.json();
+                        errDetail = errData.detail || errDetail;
+                    } catch (e) {}
+                    throw new Error(errDetail);
+                }
+
+                const data = await res.json();
+                activeSector = data.sector || sector || 'TECH';
+                
+                // Save search history
+                saveToSearchHistory(jd, seniority, sector, parseInt(topK));
+                
+                // Pipeline Step updates - Staggered dynamic animations
+                // Step 1: Query Explosion
+                setStepState('step-explosion', 'badge-explosion', `${data.timings.query_explosion_ms.toFixed(1)}ms`, 'completed');
+                document.getElementById('details-explosion').innerText = data.expanded_query;
+                
+                // Trigger Step 2
+                setStepState('step-retrieval', 'badge-retrieval', 'Running...', 'active');
+                
+                setTimeout(() => {
+                    setStepState('step-retrieval', 'badge-retrieval', `${data.timings.vector_retrieval_ms.toFixed(1)}ms`, 'completed');
+                    document.getElementById('details-retrieval').innerText = `Smart pre-filtering completed. Evaluated candidate profiles and filtered to the top pool using hybrid keyword & title overlaps.`;
+                    
+                    // Trigger Step 3
+                    setStepState('step-rerank', 'badge-rerank', 'Running...', 'active');
+                    
+                    setTimeout(() => {
+                        setStepState('step-rerank', 'badge-rerank', `${data.timings.cross_encoder_rerank_ms.toFixed(1)}ms`, 'completed');
+                        document.getElementById('details-rerank').innerText = `Dynamic SLM Swarm Node evaluation completed. Assessed deep contextual alignment and semantic similarity across all candidate resume chunks using the sector model.`;
+                        
+                        // Trigger Step 4
+                        setStepState('step-scorer', 'badge-scorer', 'Running...', 'active');
+                        
+                        setTimeout(() => {
+                            setStepState('step-scorer', 'badge-scorer', `${data.timings.scorer_scoring_ms.toFixed(1)}ms`, 'completed');
+                            document.getElementById('details-scorer').innerText = `Calculated Career Velocity and freshness indices.\nApplied keyword penalty (15% reduction), education bonuses (+5), and seniority mismatch caps recursively.`;
+                            
+                            // Render Candidates finally
+                            renderCandidates(data.candidates);
+                        }, 300);
+                    }, 300);
+                }, 300);
+
+            } catch (error) {
+                console.error(error);
+                alert("Error executing pipeline: " + error.message);
+                resetPipelineSteps();
+            } finally {
+                runBtn.disabled = false;
+                runBtn.innerHTML = `<span>🚀</span> Run Radar Scan`;
+            }
+        }
+
+        function resetPipelineSteps() {
+            document.querySelectorAll('.pipeline-step').forEach(step => {
+                step.className = 'pipeline-step';
+            });
+            document.querySelectorAll('.step-badge').forEach(badge => {
+                badge.innerText = 'Idle';
+            });
+        }
+
+        function setStepState(stepId, badgeId, text, state) {
+            const step = document.getElementById(stepId);
+            const badge = document.getElementById(badgeId);
+            if (step && badge) {
+                step.className = `pipeline-step ${state}`;
+                badge.innerText = text;
+            }
+        }
+
+        // Render ranked candidate cards
+        function renderCandidates(candidates) {
+            if (candidates) {
+                candidates.forEach(c => {
+                    if (!c.id && c.candidate_id) c.id = c.candidate_id;
+                });
+            }
+            activeCandidates = candidates;
+            updateShortlistBadgeCount();
+            
+            const container = document.getElementById('candidates-container');
+            const countText = document.getElementById('ranked-count');
+            
+            const exportBtn = document.getElementById('export-csv-btn');
+            if (exportBtn) {
+                exportBtn.style.display = candidates.length > 0 ? 'inline-block' : 'none';
+            }
+            
+            let displayList = candidates;
+            const shortlist = getShortlist();
+            if (currentTab === 'shortlist') {
+                displayList = Object.values(shortlist);
+                countText.innerText = displayList.length;
+            } else {
+                countText.innerText = candidates.length;
+            }
+
+            container.innerHTML = "";
+
+            if (displayList.length === 0) {
+                if (currentTab === 'shortlist') {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">❤️</div>
+                            <h3>No shortlisted candidates</h3>
+                            <p>Pin candidates to your shortlist by clicking the heart button on candidate cards.</p>
+                        </div>`;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚠️</div>
+                            <h3>No matches found</h3>
+                            <p>No candidates fit within the selected filters or minimum score thresholds.</p>
+                        </div>`;
+                }
+                return;
+            }
+
+            displayList.forEach((cand, index) => {
+                const card = document.createElement('div');
+                const isShortlisted = !!shortlist[cand.id];
+                const isCompared = selectedCompareIds.includes(cand.id);
+                
+                // Map status class
+                let statusClass = "longshot";
+                let statusIcon = "💎";
+                if (cand.status_label.includes("Hidden Gem")) { statusClass = "gem"; statusIcon = "🚀"; }
+                else if (cand.status_label.includes("Solid Match")) { statusClass = "solid"; statusIcon = "🏆"; }
+                else if (cand.status_label.includes("Potential Fit")) { statusClass = "potential"; statusIcon = "⭐"; }
+                
+                card.className = `candidate-card ${statusClass}`;
+                card.onclick = () => inspectCandidate(cand);
+                
+                // SVG Progress calculations
+                const progressOffset = 176 - (176 * cand.final_score) / 100;
+                
+                // Check guardrails to display icons on card front
+                let guardrailBadges = "";
+                if (cand.guardrail_keyword_penalty_applied) {
+                    guardrailBadges += `<div class="guardrail-dot keyword" title="Keyword Overfitter Penalty Applied: 15% score reduction">K</div>`;
+                }
+                if (cand.guardrail_seniority_cap_applied) {
+                    guardrailBadges += `<div class="guardrail-dot experience" title="Seniority Mismatch Cap Applied: Score capped at 65">S</div>`;
+                }
+
+                // Name extraction warning badge
+                const showWarning = cand.name_not_extracted || cand.name === "Unknown Candidate" || !cand.name;
+                const displayName = showWarning ? `Unknown Candidate <span class="warning-badge" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; margin-left: 8px;">⚠️ Name Not Extracted</span>` : cand.name;
+
+                // Pre-normalized raw score
+                const rawScoreVal = cand.raw_semantic_score !== undefined ? cand.raw_semantic_score : (cand.semantic_score / 100);
+                const rawScorePercent = (rawScoreVal * 100).toFixed(1);
+
+                card.innerHTML = `
+                    <div class="rank-badge">${(index + 1).toString().padStart(2, '0')}</div>
+                    
+                    <div class="candidate-info">
+                        <div class="candidate-header-row" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <span class="candidate-name">${displayName}</span>
+                            <span class="status-chip ${statusClass}">${statusIcon} ${cand.status_label.replace(/[🚀🏆⭐]/g, '')}</span>
+                            ${cand.staleness_warning ? `<span style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700;" title="Dormancy Warning">${cand.staleness_warning}</span>` : ''}
+                            <div class="guardrail-indicators">${guardrailBadges}</div>
+                        </div>
+                        <div class="candidate-title-row" style="margin-top: 4px; margin-bottom: 8px;">
+                            <span class="candidate-title">${cand.current_title}</span>
+                        </div>
+                        <p class="candidate-reasoning">${cand.reasoning}</p>
+                        <div class="score-badges">
+                            <div class="score-badge" title="Score represents raw semantic similarity. Relative rank normalized within current pool.">
+                                Semantic Depth: <span>${rawScorePercent}%</span>
+                                <span style="font-size: 10px; color: var(--color-text-muted); display: block; margin-top: 2px;">Rank ${index + 1} of ${candidates.length}</span>
+                            </div>
+                            <div class="score-badge">Velocity Index: <span>${cand.velocity_score}/10</span></div>
+                            <div class="score-badge">Freshness: <span>${cand.freshness_label}</span></div>
+                        </div>
+                    </div>
+                    
+                    <div class="candidate-card-actions" style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; justify-content: center; margin-right: 10px;">
+                        <button class="shortlist-star ${isShortlisted ? 'active' : ''}" onclick="event.stopPropagation(); toggleShortlist('${cand.id}')" title="Pin to Shortlist">
+                            ❤️
+                        </button>
+                        <label class="compare-label" onclick="event.stopPropagation();">
+                            <input type="checkbox" class="compare-checkbox" data-id="${cand.id}" onclick="event.stopPropagation(); toggleCompare('${cand.id}', this)" ${isCompared ? 'checked' : ''}>
+                            Compare
+                        </label>
+                    </div>
+
+                    <div class="score-circle-container">
+                        <svg class="score-svg">
+                            <circle class="score-svg-bg" cx="30" cy="30" r="28" />
+                            <circle class="score-svg-bar" cx="30" cy="30" r="28" style="stroke-dashoffset: ${progressOffset};" />
+                        </svg>
+                        <span class="score-text">${cand.final_score.toFixed(0)}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Local Skills Gap analyzer
+        function analyzeSkillsGap(cand, jdText) {
+            const jdLower = (jdText || "").toLowerCase();
+            const sectorDictionaries = {
+                TECH: [
+                    'python', 'pytorch', 'tensorflow', 'triton', 'cuda', 'c++', 'c', 'java', 'react', 'node', 
+                    'typescript', 'javascript', 'go', 'rust', 'aws', 'docker', 'kubernetes', 'sql', 'nosql', 
+                    'mongodb', 'postgresql', 'mysql', 'redis', 'spark', 'hadoop', 'scikit-learn', 'numpy', 
+                    'pandas', 'fastapi', 'flask', 'django', 'html', 'css', 'git', 'ci/cd', 'graphql', 'rest', 
+                    'gcp', 'azure', 'tableau', 'powerbi', 'figma', 'agile', 'scrum'
+                ],
+                FIN: [
+                    'financial analysis', 'valuation', 'excel', 'accounting', 'portfolio management', 'risk management', 
+                    'corporate finance', 'financial modeling', 'cfa', 'cpa', 'investment banking', 'asset management', 
+                    'derivatives', 'audit', 'tax', 'wealth management', 'm&a', 'underwriting', 'compliance', 'budgeting', 
+                    'forecasting'
+                ],
+                HEALTH: [
+                    'clinical trials', 'patient care', 'emr', 'nursing', 'medical terminology', 'diagnostics', 
+                    'pharmacology', 'healthcare management', 'anatomy', 'physiology', 'first aid', 'bls', 'acls', 
+                    'pathology', 'immunology', 'biostatistics', 'epidemiology', 'medical billing', 'oncology', 
+                    'pediatrics', 'surgery'
+                ],
+                LEGAL: [
+                    'litigation', 'contract drafting', 'legal research', 'compliance', 'corporate law', 'intellectual property', 
+                    'due diligence', 'arbitration', 'mediation', 'westlaw', 'lexisnexis', 'legal writing', 'commercial law', 
+                    'employment law', 'family law', 'criminal law', 'regulatory compliance', 'patent law', 'tort law'
+                ],
+                REAL: [
+                    'real estate', 'property management', 'valuation', 'leasing', 'urban planning', 'construction management', 
+                    'architecture', 'cad', 'gis', 'asset management', 'commercial leasing', 'residential sales', 'zoning', 
+                    'market analysis', 'land acquisition', 'facilities management', 'reit', 'brokerage'
+                ],
+                MANU: [
+                    'six sigma', 'lean manufacturing', 'supply chain', 'cad', 'solidworks', 'quality assurance', 'qa/qc', 
+                    'cnc', 'plc programming', 'industrial engineering', 'haccp', 'root cause analysis', 'kaizen', 
+                    'materials science', 'automation', 'logistics', 'operations management'
+                ],
+                COMM: [
+                    'marketing', 'retail', 'sales', 'seo', 'sem', 'digital marketing', 'social media', 'crm', 
+                    'brand management', 'customer service', 'merchandising', 'e-commerce', 'b2b sales', 'market research', 
+                    'advertising', 'public relations', 'content strategy', 'google analytics'
+                ],
+                LOGI: [
+                    'supply chain', 'logistics', 'inventory management', 'warehouse management', 'distribution', 'procurement', 
+                    'operations research', 'sap', 'erp', 'freight forwarding', 'transportation management', 'fleet management', 
+                    'demand planning', 'vendor management', 'materials handling'
+                ],
+                MEDIA: [
+                    'journalism', 'copywriting', 'video editing', 'adobe premiere', 'photoshop', 'indesign', 'illustrator', 
+                    'content creation', 'social media', 'public relations', 'broadcasting', 'creative writing', 'photography', 
+                    'seo', 'digital media', 'graphic design', 'storytelling'
+                ],
+                ENERGY: [
+                    'renewable energy', 'solar', 'wind', 'petroleum engineering', 'drilling', 'geology', 'environmental compliance', 
+                    'electrical engineering', 'hseq', 'geophysics', 'power distribution', 'energy modeling', 'sustainability', 
+                    'reservoir engineering', 'nuclear engineering', 'smart grid'
+                ],
+                EDU: [
+                    'curriculum development', 'classroom management', 'lesson planning', 'pedagogy', 'educational technology', 
+                    'special education', 'instructional design', 'e-learning', 'lms', 'tutoring', 'academic advising', 
+                    'assessment', 'early childhood', 'higher education', 'stem'
+                ],
+                GOV: [
+                    'public policy', 'public administration', 'policy analysis', 'international relations', 'grant writing', 
+                    'legislative drafting', 'community outreach', 'intergovernmental relations', 'public safety', 'national security', 
+                    'urban planning', 'foreign affairs', 'homeland security'
+                ]
+            };
+
+            const currentSector = (activeSector || "TECH").toUpperCase();
+            const sectorKeywords = sectorDictionaries[currentSector] || sectorDictionaries["TECH"];
+            
+            const jdKeywords = sectorKeywords.filter(keyword => {
+                const regex = new RegExp('\\b' + keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '\\b', 'i');
+                return regex.test(jdLower);
+            });
+
+            const candSkillsLower = (cand.skills_listed || []).map(s => s.toLowerCase());
+            const matches = [];
+            const gaps = [];
+            
+            jdKeywords.forEach(kw => {
+                const hasSkill = candSkillsLower.some(s => s.includes(kw) || kw.includes(s));
+                if (hasSkill) {
+                    matches.push(kw);
+                } else {
+                    gaps.push(kw);
+                }
+            });
+
+            const cap = s => s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+            return {
+                matches: matches.map(cap),
+                gaps: gaps.map(cap)
+            };
+        }
+
+        // Recruiter Notes persistent auto-save
+        function saveCandidateNote(candId, noteText) {
+            localStorage.setItem(`talent_radar_note_${candId}`, noteText);
+            const indicator = document.getElementById(`notes-saved-indicator_${candId}`);
+            if (indicator) {
+                indicator.style.display = 'block';
+                setTimeout(() => {
+                    indicator.style.display = 'none';
+                }, 1500);
+            }
+        }
+
+        // Open candidate detail drawer
+        function inspectCandidate(cand) {
+            const drawer = document.getElementById('profile-drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            const body = document.getElementById('drawer-content-body');
+            
+            const sWeight = document.getElementById('weight-semantic-slider').value;
+            const vWeight = document.getElementById('weight-velocity-slider').value;
+            const fWeight = document.getElementById('weight-freshness-slider').value;
+            
+            document.getElementById('drawer-header-title').innerText = `Inspect Candidate Profile`;
+            
+            const shortlist = getShortlist();
+            const isShortlisted = !!shortlist[cand.id];
+
+            // Map status CSS
+            let statusClass = "longshot";
+            let statusIcon = "💎";
+            if (cand.status_label.includes("Hidden Gem")) { statusClass = "gem"; statusIcon = "🚀"; }
+            else if (cand.status_label.includes("Solid Match")) { statusClass = "solid"; statusIcon = "🏆"; }
+            else if (cand.status_label.includes("Potential Fit")) { statusClass = "potential"; statusIcon = "⭐"; }
+            
+            // Guardrail highlights HTML
+            let guardrailAlerts = "";
+            if (cand.guardrail_keyword_penalty_applied) {
+                guardrailAlerts += `
+                    <div class="drawer-alert danger">
+                        <strong>⚠️ KEYWORD OVERFITTER DETECTED:</strong><br>
+                        This profile contains 20+ self-declared skills, yet has a sparse resume narrative (under 200 words). A <strong>15% penalty multiplier</strong> was applied to their cross-encoder semantic score prior to composite aggregation.
+                    </div>`;
+            }
+            if (cand.guardrail_seniority_cap_applied) {
+                guardrailAlerts += `
+                    <div class="drawer-alert warning">
+                        <strong>⚠️ SENIORITY EXPERIENCE GAP DETECTED:</strong><br>
+                        Recruiter requested a senior role, but this candidate has less than 2.0 years of total professional experience. Their final score has been strictly capped at <strong>65/100</strong>, regardless of role matches.
+                    </div>`;
+            }
+            if (cand.flags && cand.flags.length > 0) {
+                cand.flags.forEach(flag => {
+                    guardrailAlerts += `
+                        <div class="drawer-alert danger">
+                            <strong>⚠️ DUPLICATE CONTENT DETECTED:</strong><br>
+                            ${flag}. A penalty was applied to their semantic score to prevent manipulation.
+                        </div>`;
+                });
+            }
+
+            // Build experience timeline
+            let timelineHtml = "";
+            cand.career_history.forEach((job, idx) => {
+                timelineHtml += `
+                    <div class="timeline-item ${idx === 0 ? 'active' : ''}">
+                        <div class="timeline-title-row">
+                            <span class="timeline-title">${job.title}</span>
+                            <span class="timeline-dates">${job.start_date} to ${job.end_date}</span>
+                        </div>
+                        <div class="timeline-company">${job.company}</div>
+                    </div>`;
+            });
+            
+            // Build skills tags
+            let skillsTags = "";
+            cand.skills_listed.forEach(skill => {
+                skillsTags += `<span class="skill-tag">${skill}</span>`;
+            });
+
+            // Skills Gap matching
+            const jdText = document.getElementById('job-description').value;
+            const gap = analyzeSkillsGap(cand, jdText);
+
+            const isTech = (activeSector || "TECH").toUpperCase() === "TECH";
+            const matchedSkillsTags = gap.matches.map(s => `<span style="background: rgba(16, 185, 129, 0.1); color: #34d399; font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2); font-weight: 600;">${s}</span>`).join(' ') || `<span style="color: var(--color-text-muted); font-size: 13px; font-style: italic;">No core matches found. Check ${isTech ? 'technical ' : ''}JD keywords.</span>`;
+            const gapSkillsTags = gap.gaps.map(s => `<span style="background: rgba(239, 68, 68, 0.1); color: #f87171; font-size: 11px; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.2); font-weight: 600;">${s}</span>`).join(' ') || `<span style="color: var(--color-text-muted); font-size: 13px; font-style: italic;">No gaps identified! Fits ${isTech ? 'technical ' : 'role '}profile perfectly.</span>`;
+
+            body.innerHTML = `
+                <!-- Profile Card Header -->
+                <div class="profile-hero" style="position: relative;">
+                    <div class="profile-title-block" style="flex: 1;">
+                        <h2>${cand.name}</h2>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+                            <span class="status-chip ${statusClass}" style="display:inline-flex;">${statusIcon} ${cand.status_label}</span>
+                            <button id="drawer-shortlist-btn" class="btn-secondary ${isShortlisted ? 'active' : ''}" onclick="toggleShortlist('${cand.id}')" style="padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border-primary); color: ${isShortlisted ? 'var(--color-warning)' : 'var(--color-text-muted)'}; background: none;">
+                                ❤️ ${isShortlisted ? 'Shortlisted' : 'Shortlist'}
+                            </button>
+                        </div>
+                        <div class="profile-meta-info" style="margin-top: 12px;">
+                            <span>📍 Location: ${cand.location || "Remote, USA"}</span>
+                            <span>💼 Current Role: ${cand.current_title}</span>
+                            <span>📅 Total Experience: ${cand.years_experience || cand.career_history.length} years</span>
+                        </div>
+                    </div>
+                    <div class="score-circle-container" style="width:80px; height:80px;">
+                        <svg class="score-svg" style="width:80px; height:80px;">
+                            <circle class="score-svg-bg" cx="40" cy="40" r="36" style="stroke-width:5;" />
+                            <circle class="score-svg-bar" cx="40" cy="40" r="36" style="stroke-width:5; stroke-dasharray: 226; stroke-dashoffset: ${226 - (226 * cand.final_score)/100};" />
+                        </svg>
+                        <span class="score-text" style="font-size:20px;">${cand.final_score.toFixed(1)}</span>
+                    </div>
+                </div>
+
+                <!-- Guardrail warnings -->
+                ${guardrailAlerts}
+
+                <!-- Score Breakdown -->
+                <div>
+                    <div class="drawer-section-title">Score Aggregation Breakdown</div>
+                    <div class="breakdown-bars">
+                        <div class="breakdown-item">
+                            <div class="breakdown-header">
+                                <span>Semantic Context Depth (${sWeight}% Weight)</span>
+                                <span>${cand.semantic_score}%</span>
+                            </div>
+                            <div class="breakdown-track">
+                                <div class="breakdown-fill primary" style="width: ${cand.semantic_score}%"></div>
+                            </div>
+                        </div>
+                        <div class="breakdown-item">
+                            <div class="breakdown-header">
+                                <span>Career Velocity slope (${vWeight}% Weight)</span>
+                                <span>${(cand.velocity_score * 10).toFixed(0)}% (${cand.velocity_score}/10)</span>
+                            </div>
+                            <div class="breakdown-track">
+                                <div class="breakdown-fill secondary" style="width: ${cand.velocity_score * 10}%"></div>
+                            </div>
+                        </div>
+                        <div class="breakdown-item">
+                            <div class="breakdown-header">
+                                <span>Profile Freshness Index (${fWeight}% Weight)</span>
+                                <span>${(cand.freshness_score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="breakdown-track">
+                                <div class="breakdown-fill success" style="width: ${cand.freshness_score * 100}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Skills Gap Analysis -->
+                <div>
+                    <div class="drawer-section-title">🔍 Semantic Skills Gap Analysis</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                        <div style="background: rgba(16, 185, 129, 0.03); border: 1px solid rgba(16, 185, 129, 0.1); border-radius: 12px; padding: 16px;">
+                            <h4 style="color: #34d399; font-size: 13px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">✓ Matched Capabilities</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${matchedSkillsTags}
+                            </div>
+                        </div>
+                        <div style="background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 12px; padding: 16px;">
+                            <h4 style="color: #f87171; font-size: 13px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">⚠️ Core Gaps Detected</h4>
+                            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                                ${gapSkillsTags}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Premium Recruiter Actions: Cloner & Outreach Email -->
+                <div>
+                    <div class="drawer-section-title">⚡ Premium Recruiter Actions</div>
+                    <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                        <button class="btn" style="flex: 1; padding: 12px; font-size: 13px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none; font-weight: 700; border-radius: 8px; cursor: pointer; color: white; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="findSimilarCandidates('${cand.id}')">
+                            👥 Find Similar Candidates
+                        </button>
+                        <button class="btn" style="flex: 1; padding: 12px; font-size: 13px; background: linear-gradient(135deg, var(--color-secondary), var(--color-warning)); border: none; font-weight: 700; border-radius: 8px; cursor: pointer; color: white; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="openOutreachModal('${cand.id}', '${cand.name.replace(/'/g, "\\'")}')">
+                            ✉️ Draft AI Outreach Email
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recruiter Note Annotation -->
+                <div>
+                    <div class="drawer-section-title">✍️ Confidential Recruiter Notes</div>
+                    <textarea id="notes-textarea-${cand.id}" oninput="saveCandidateNote('${cand.id}', this.value)" placeholder="Write persistent recruiter comments, interview logs, or qualification assessments here (auto-saved)..." style="width: 100%; height: 100px; padding: 12px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-family: var(--font-main); font-size: 13px; resize: vertical; outline: none; transition: var(--transition-smooth); margin-bottom: 4px;"></textarea>
+                    <div style="font-size: 11px; color: var(--color-success); font-weight: 600; display: none;" id="notes-saved-indicator_${cand.id}">✓ Saved securely to recruiter notes database</div>
+                </div>
+
+                <!-- Dynamic Interview Guide Section -->
+                <div>
+                    <div class="drawer-section-title">💬 Dynamic Phone Screen & Interview Guide</div>
+                    <div id="interview-questions-box-${cand.id}" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-primary); border-radius: 12px; padding: 16px; min-height: 80px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px;">
+                        <span id="interview-questions-loading-${cand.id}" style="font-size: 13px; color: var(--color-text-muted); text-align: center;">No dynamic questions generated yet for this candidate.</span>
+                        <button id="generate-questions-btn-${cand.id}" class="btn" style="padding: 10px 18px; font-size: 13px; width: auto; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); box-shadow: none;" onclick="generatePhoneScreenQuestions('${cand.id}')">
+                            ⚡ Generate Dynamic Interview Questions
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Career Timeline -->
+                <div>
+                    <div class="drawer-section-title">Career Momentum Timeline</div>
+                    <div class="timeline">
+                        ${timelineHtml}
+                    </div>
+                </div>
+
+                <!-- Declared Skills -->
+                <div>
+                    <div class="drawer-section-title">Self-Declared Skill Set</div>
+                    <div class="skills-container">
+                        ${skillsTags}
+                    </div>
+                </div>
+
+                <!-- Full Resume Text -->
+                <div>
+                    <div class="drawer-section-title">Resume Transcript</div>
+                    <div class="resume-text-box">${cand.resume_text}</div>
+                </div>
+            `;
+
+            // Load saved note
+            const savedNote = localStorage.getItem(`talent_radar_note_${cand.id}`) || "";
+            setTimeout(() => {
+                const textarea = document.getElementById(`notes-textarea-${cand.id}`);
+                if (textarea) textarea.value = savedNote;
+            }, 50);
+
+            drawer.classList.add('open');
+            overlay.classList.add('open');
+        }
+
+        // Composite Weights Automatic Auto-Adjuster
+        function onWeightChange(source) {
+            const sSlider = document.getElementById('weight-semantic-slider');
+            const vSlider = document.getElementById('weight-velocity-slider');
+            const fSlider = document.getElementById('weight-freshness-slider');
+            
+            let sVal = parseInt(sSlider.value);
+            let vVal = parseInt(vSlider.value);
+            let fVal = parseInt(fSlider.value);
+            
+            const total = sVal + vVal + fVal;
+            
+            if (total !== 100) {
+                const diff = 100 - total;
+                if (source === 'semantic') {
+                    const remainder = vVal + fVal;
+                    if (remainder > 0) {
+                        vSlider.value = Math.max(0, Math.round(vVal + diff * (vVal / remainder)));
+                        fSlider.value = Math.max(0, 100 - sVal - parseInt(vSlider.value));
+                    } else {
+                        vSlider.value = Math.round(diff / 2);
+                        fSlider.value = 100 - sVal - parseInt(vSlider.value);
+                    }
+                } else if (source === 'velocity') {
+                    const remainder = sVal + fVal;
+                    if (remainder > 0) {
+                        sSlider.value = Math.max(0, Math.round(sVal + diff * (sVal / remainder)));
+                        fSlider.value = Math.max(0, 100 - vVal - parseInt(sSlider.value));
+                    } else {
+                        sSlider.value = Math.round(diff / 2);
+                        fSlider.value = 100 - vVal - parseInt(sSlider.value);
+                    }
+                } else if (source === 'freshness') {
+                    const remainder = sVal + vVal;
+                    if (remainder > 0) {
+                        sSlider.value = Math.max(0, Math.round(sVal + diff * (sVal / remainder)));
+                        vSlider.value = Math.max(0, 100 - fVal - parseInt(sSlider.value));
+                    } else {
+                        sSlider.value = Math.round(diff / 2);
+                        vSlider.value = 100 - fVal - parseInt(sSlider.value);
+                    }
+                }
+            }
+            
+            document.getElementById('weight-semantic-val').innerText = sSlider.value + '%';
+            document.getElementById('weight-velocity-val').innerText = vSlider.value + '%';
+            document.getElementById('weight-freshness-val').innerText = fSlider.value + '%';
+            
+            const finalTotal = parseInt(sSlider.value) + parseInt(vSlider.value) + parseInt(fSlider.value);
+            document.getElementById('weights-total-badge').innerText = 'Total: ' + finalTotal + '%';
+        }
+
+        // Recent Search History management
+        function saveToSearchHistory(jd, seniority, sector, topK) {
+            let history = [];
+            try {
+                history = JSON.parse(localStorage.getItem('talent_radar_search_history') || '[]');
+            } catch (e) {}
+            
+            history = history.filter(item => item.jd.trim() !== jd.trim());
+            
+            history.unshift({
+                jd: jd,
+                seniority: seniority,
+                sector: sector,
+                topK: topK,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString()
+            });
+            
+            if (history.length > 5) {
+                history = history.slice(0, 5);
+            }
+            
+            localStorage.setItem('talent_radar_search_history', JSON.stringify(history));
+        }
+
+        function toggleHistoryDropdown() {
+            const drawer = document.getElementById('history-drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            
+            populateHistoryDrawer();
+            
+            drawer.classList.add('open');
+            overlay.classList.add('open');
+        }
+
+        function closeHistoryDrawer() {
+            document.getElementById('history-drawer').classList.remove('open');
+            if (!document.getElementById('profile-drawer').classList.contains('open') &&
+                !document.getElementById('settings-drawer').classList.contains('open')) {
+                document.getElementById('drawer-overlay').classList.remove('open');
+            }
+        }
+
+        function populateHistoryDrawer() {
+            const container = document.getElementById('history-drawer-content');
+            let history = [];
+            try {
+                history = JSON.parse(localStorage.getItem('talent_radar_search_history') || '[]');
+            } catch (e) {
+                history = [];
+            }
+            
+            container.innerHTML = "";
+            
+            if (history.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px 20px; color: var(--color-text-muted);">
+                        <div style="font-size: 32px; margin-bottom: 12px;">🕒</div>
+                        <h4 style="color: var(--color-text-main); font-weight: 600; margin-bottom: 8px;">No search history found</h4>
+                        <p style="font-size: 13px;">Execute a radar scan to build your client-side search history panel.</p>
+                    </div>`;
+                return;
+            }
+            
+            history.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.style.background = 'rgba(255, 255, 255, 0.02)';
+                card.style.border = '1px solid var(--border-primary)';
+                card.style.borderRadius = '12px';
+                card.style.padding = '16px';
+                card.style.cursor = 'pointer';
+                card.style.transition = 'var(--transition-smooth)';
+                card.style.display = 'flex';
+                card.style.flexDirection = 'column';
+                card.style.gap = '8px';
+                card.style.marginBottom = '12px';
+                
+                card.onmouseover = () => {
+                    card.style.background = 'rgba(6, 182, 212, 0.05)';
+                    card.style.borderColor = 'var(--color-primary)';
+                };
+                card.onmouseout = () => {
+                    card.style.background = 'rgba(255, 255, 255, 0.02)';
+                    card.style.borderColor = 'var(--border-primary)';
+                };
+                
+                const snippet = item.jd.length > 80 ? item.jd.substring(0, 80) + '...' : item.jd;
+                
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 10px; color: var(--color-primary); font-weight: 700; text-transform: uppercase;">${item.sector || 'TECH'} Sector</span>
+                        <span style="font-size: 10px; color: var(--color-text-muted);">${item.timestamp || 'Recent'}</span>
+                    </div>
+                    <div style="font-size: 13px; color: var(--color-text-main); font-weight: 600; line-height: 1.4; word-break: break-word;">${snippet}</div>
+                    <div style="display: flex; gap: 8px; font-size: 11px; color: var(--color-text-muted);">
+                        <span>💼 Seniority: <strong>${item.seniority || 'Senior'}</strong></span>
+                        <span>👥 Limit: <strong>${item.topK || 50}</strong></span>
+                    </div>
+                `;
+                
+                card.onclick = () => {
+                    document.getElementById('job-description').value = item.jd;
+                    document.getElementById('seniority-level').value = item.seniority || 'Senior';
+                    document.getElementById('sector-select').value = item.sector || 'AUTO';
+                    document.getElementById('top-k-slider').value = item.topK || 50;
+                    document.getElementById('top-k-val').innerText = item.topK || 50;
+                    
+                    closeHistoryDrawer();
+                    showToast("Search history item loaded successfully!");
+                };
+                
+                container.appendChild(card);
+            });
+        }
+
+        // Outreach Modal management
+        let activeOutreachCandidateId = null;
+
+        function openOutreachModal(candidateId, candidateName) {
+            activeOutreachCandidateId = candidateId;
+            document.getElementById('outreach-candidate-name').value = candidateName;
+            
+            const currentJd = document.getElementById('job-description').value;
+            document.getElementById('outreach-jd').value = currentJd || "";
+            
+            document.getElementById('outreach-result-container').style.display = 'none';
+            document.getElementById('outreach-result-text').value = '';
+            
+            document.getElementById('outreach-modal').style.display = 'flex';
+        }
+
+        function closeOutreachModal() {
+            document.getElementById('outreach-modal').style.display = 'none';
+            activeOutreachCandidateId = null;
+        }
+
+        async function generateOutreachEmail() {
+            if (!activeOutreachCandidateId) return;
+            
+            const jd = document.getElementById('outreach-jd').value;
+            const tone = document.getElementById('outreach-tone').value;
+            
+            if (!jd.trim()) {
+                alert("Please supply a job description or context first.");
+                return;
+            }
+            
+            const genBtn = document.querySelector('#outreach-modal button[onclick="generateOutreachEmail()"]');
+            const originalText = genBtn.innerHTML;
+            genBtn.disabled = true;
+            genBtn.innerHTML = `🌀 Drafting email with Gemini...`;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/candidates/${activeOutreachCandidateId}/outreach`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_description: jd,
+                        tone: tone
+                    })
+                });
+                
+                if (!res.ok) {
+                    throw new Error("Outreach generation network error");
+                }
+                
+                const data = await res.json();
+                
+                document.getElementById('outreach-result-text').value = data.email;
+                document.getElementById('outreach-result-container').style.display = 'flex';
+                
+                showToast("AI Outreach draft generated successfully!");
+            } catch (err) {
+                alert("Generation failed: " + err.message);
+            } finally {
+                genBtn.disabled = false;
+                genBtn.innerHTML = originalText;
+            }
+        }
+
+        function copyOutreachEmail() {
+            const textArea = document.getElementById('outreach-result-text');
+            textArea.select();
+            document.execCommand('copy');
+            showToast("Copied to clipboard!");
+        }
+
+        // Find Similar Cloner
+        async function findSimilarCandidates(candidateId) {
+            const drawer = document.getElementById('profile-drawer');
