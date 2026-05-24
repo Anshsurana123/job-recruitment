@@ -398,3 +398,53 @@ class SwarmMatrixRanker:
 
         # PHASE 1: Chunk all resumes and build one flat fragment list
         # Track which fragments belong to which candidate via index ranges
+        all_fragments = []
+        candidate_index_ranges = []  # (start_idx, end_idx) into all_fragments per candidate
+
+        for cand in candidates:
+            resume_text = cand.get("resume_text", "")
+            fragments = self.chunker.chunk_text(resume_text, max_words=300)
+            if not fragments:
+                fragments = [""]  # Ensure at least one entry so index math stays consistent
+            start = len(all_fragments)
+            all_fragments.extend(fragments)
+            end = len(all_fragments)
+            candidate_index_ranges.append((start, end))
+
+        print(f"[Swarm Matrix] Mega-batch: {len(candidates)} candidates -> {len(all_fragments)} total fragments")
+
+        # PHASE 2: ONE single batched forward pass over all fragments — no threading, no async
+        t1 = time.time()
+        all_scores = evaluator.evaluate_fragments_batch(
+            reqs.polished_requirements,
+            all_fragments,
+            batch_size=32
+        )
+        t2 = time.time()
+        print(f"[Swarm Matrix] Mega-batch inference complete: {len(all_fragments)} fragments in {(t2-t1)*1000:.0f}ms")
+
+        # PHASE 3: Redistribute scores back to candidates and aggregate via MAX()
+        scored_candidates = []
+        for i, cand in enumerate(candidates):
+            start, end = candidate_index_ranges[i]
+            fragment_scores = all_scores[start:end]
+            max_fragment_score = max(fragment_scores) if fragment_scores else 0.0
+
+            role_transitions = len(cand.get("career_history", []))
+            years_experience = float(cand.get("years_experience", 1.0))
+            velocity = float(role_transitions) / (years_experience + 1.0)
+            final_score = (0.75 * max_fragment_score) + (0.25 * min(1.0, velocity))
+
+            scored_candidates.append({
+                "Candidate ID": cand.get("candidate_id", "Unknown"),
+                "Candidate Name": cand.get("name", "Unknown"),
+                "Macro Sector Code": reqs.sector_token,
+                "Best Chunk Alignment Score": max_fragment_score,
+                "Career Velocity": velocity,
+                "Final Unified Score": final_score * 100.0
+            })
+
+        print(f"[Swarm Matrix] Total rank_candidates(): {(time.time()-t0)*1000:.0f}ms")
+
+        df = pd.DataFrame(scored_candidates)
+        df = df.sort_values(by="Final Unified Score", ascending=False).reset_index(drop=True)
