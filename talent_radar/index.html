@@ -598,3 +598,1203 @@
             top: 0;
             left: 0;
             width: 3px;
+            height: 100%;
+            background: transparent;
+            transition: var(--transition-smooth);
+        }
+
+        .candidate-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            background: rgba(26, 35, 58, 0.7);
+            transform: translateX(4px);
+        }
+
+        /* Interactive controls for premium experience */
+        .candidate-card .shortlist-star {
+            position: static;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: var(--transition-smooth);
+            color: var(--color-text-muted);
+            cursor: pointer;
+            z-index: 2;
+            padding: 0;
+        }
+        .candidate-card .shortlist-star:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            transform: scale(1.1);
+            color: #f87171;
+        }
+        .candidate-card .shortlist-star.active {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+        }
+        .candidate-card .compare-label {
+            position: static;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 8px;
+            transition: var(--transition-smooth);
+            z-index: 2;
+        }
+        .candidate-card .compare-label:hover {
+            background: rgba(6, 182, 212, 0.1);
+            border-color: rgba(6, 182, 212, 0.3);
+            color: var(--color-primary);
+        }
+        .candidate-card .compare-checkbox {
+            accent-color: var(--color-primary);
+            cursor: pointer;
+            margin: 0;
+            width: 14px;
+            height: 14px;
+        }
+
+        /* Color styling according to match status */
+        .candidate-card.gem { border-color: rgba(245, 158, 11, 0.25); }
+        .candidate-card.gem::before { background: var(--color-warning); }
+        .candidate-card.gem:hover { border-color: rgba(245, 158, 11, 0.5); box-shadow: var(--shadow-glow); }
+
+        .candidate-card.solid { border-color: rgba(16, 185, 129, 0.2); }
+        .candidate-card.solid::before { background: var(--color-success); }
+        .candidate-card.solid:hover { border-color: rgba(16, 185, 129, 0.4); }
+
+        .candidate-card.potential { border-color: rgba(6, 182, 212, 0.2); }
+        .candidate-card.potential::before { background: var(--color-primary); }
+        .candidate-card.potential:hover { border-color: rgba(6, 182, 212, 0.4); }
+
+        .candidate-card.longshot::before { background: var(--color-text-muted); }
+
+        .rank-badge {
+            font-size: 22px;
+            font-weight: 900;
+            font-family: var(--font-mono);
+            color: rgba(255, 255, 255, 0.1);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            min-width: 32px;
+            text-align: center;
+        }
+
+        .candidate-card.gem .rank-badge {
+            background: linear-gradient(135deg, var(--color-warning) 0%, rgba(245, 158, 11, 0.2));
+            -webkit-background-clip: text;
+        }
+
+        .candidate-info {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .name-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .candidate-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--color-text-main);
+        }
+
+        .candidate-title {
+            font-size: 13px;
+            color: var(--color-text-muted);
+        }
+
+        .candidate-reasoning {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.4;
+        }
+
+        /* Badges & Scores */
+        .score-badges {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 11px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+
+        .score-badge {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-primary);
+            padding: 2px 8px;
+            border-radius: 6px;
+            color: var(--color-text-muted);
+        }
+
+        .score-badge span {
+            font-weight: 700;
+            color: var(--color-text-main);
+        }
+
+        .status-chip {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .status-chip.gem { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.25); color: var(--color-warning); }
+        .status-chip.solid { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); color: var(--color-success); }
+        .status-chip.potential { background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.25); color: var(--color-primary); }
+        .status-chip.longshot { background: rgba(156, 163, 175, 0.12); border: 1px solid rgba(156, 163, 175, 0.25); color: var(--color-text-muted); }
+
+        .guardrail-indicators {
+            display: flex;
+            gap: 6px;
+        }
+
+        .guardrail-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 800;
+            cursor: help;
+        }
+
+        .guardrail-dot.keyword {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--color-danger);
+        }
+
+        .guardrail-dot.experience {
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            color: var(--color-warning);
+        }
+
+        /* Circular Score Indicator */
+        .score-circle-container {
+            position: relative;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .score-svg {
+            transform: rotate(-90deg);
+            width: 60px;
+            height: 60px;
+        }
+
+        .score-svg-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.04);
+            stroke-width: 4;
+        }
+
+        .score-svg-bar {
+            fill: none;
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-dasharray: 176;
+            stroke-dashoffset: 176;
+            transition: stroke-dashoffset 1s ease-in-out;
+        }
+
+        .candidate-card.gem .score-svg-bar { stroke: url(#gradient-gem); }
+        .candidate-card.solid .score-svg-bar { stroke: url(#gradient-solid); }
+        .candidate-card.potential .score-svg-bar { stroke: url(#gradient-potential); }
+        .candidate-card.longshot .score-svg-bar { stroke: var(--color-text-muted); }
+
+        .score-text {
+            position: absolute;
+            font-size: 14px;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            color: var(--color-text-main);
+        }
+
+        .settings-toggle-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-primary);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-family: var(--font-main);
+            color: var(--color-text-main);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            transition: var(--transition-smooth);
+        }
+
+        .settings-toggle-btn:hover {
+            background: rgba(6, 182, 212, 0.15);
+            border-color: var(--color-primary);
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* Detail Drawer */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition-smooth);
+        }
+
+        .drawer-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 600px;
+            height: 100vh;
+            background: #0b0f19;
+            border-left: 1px solid var(--border-primary);
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+            z-index: 101;
+            transform: translateX(100%);
+            transition: var(--transition-smooth);
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+
+        @media (max-width: 768px) {
+            .drawer {
+                width: 100%;
+            }
+        }
+
+        .drawer.open {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-close {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-primary);
+            color: var(--color-text-main);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            transition: var(--transition-smooth);
+        }
+
+        .drawer-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--color-danger);
+        }
+
+        .drawer-content {
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .drawer-section-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--color-primary);
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            padding-bottom: 6px;
+        }
+
+        /* Profile Header Info */
+        .profile-hero {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-primary);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .profile-title-block h2 {
+            font-size: 20px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .profile-meta-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--color-text-muted);
+        }
+
+        /* Guardrail Alerts inside drawer */
+        .drawer-alert {
+            display: flex;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .drawer-alert.danger {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+
+        .drawer-alert.warning {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: #fde047;
+        }
+
+        /* Dynamic Score Breakdown Bars */
+        .breakdown-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .breakdown-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .breakdown-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .breakdown-track {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .breakdown-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .breakdown-fill.primary { background: linear-gradient(90deg, var(--color-primary), #22d3ee); }
+        .breakdown-fill.secondary { background: linear-gradient(90deg, var(--color-secondary), #a78bfa); }
+        .breakdown-fill.success { background: linear-gradient(90deg, var(--color-success), #34d399); }
+
+        /* Timeline */
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: 5px;
+            width: 2px;
+            height: calc(100% - 8px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .timeline-item {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            top: 6px;
+            left: -19px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--bg-base);
+            border: 2px solid var(--color-text-muted);
+            transition: var(--transition-smooth);
+        }
+
+        .timeline-item.active::before {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 8px var(--color-primary);
+        }
+
+        .timeline-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .timeline-title {
+            font-weight: 700;
+            color: var(--color-text-main);
+        }
+
+        .timeline-company {
+            font-size: 13px;
+            color: var(--color-text-muted);
+        }
+
+        .timeline-dates {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            font-family: var(--font-mono);
+        }
+
+        /* Resume Text Box */
+        .resume-text-box {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            max-height: 250px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+
+        .skills-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .skill-tag {
+            background: rgba(6, 182, 212, 0.05);
+            border: 1px solid rgba(6, 182, 212, 0.15);
+            color: var(--color-primary);
+            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 6px;
+        }
+
+        /* Sidebar Container for Sidebar Panels */
+        .sidebar-container {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Upload Area Styling */
+        .upload-area {
+            border: 2px dashed rgba(6, 182, 212, 0.25);
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 12px;
+            padding: 24px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--color-primary);
+            background: rgba(6, 182, 212, 0.05);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            color: var(--color-primary);
+            transition: var(--transition-smooth);
+            line-height: 1;
+        }
+
+        .upload-area:hover .upload-icon {
+            transform: translateY(-2px);
+        }
+
+        .upload-text {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            line-height: 1.4;
+        }
+
+        .upload-text strong {
+            color: var(--color-primary);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-progress-container {
+            width: 100%;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            transition: width 0.3s ease;
+        }
+
+        .upload-status {
+            font-size: 12px;
+            font-family: var(--font-mono);
+            text-align: center;
+        }
+
+        .upload-status.success { color: var(--color-success); }
+        .upload-status.error { color: var(--color-danger); }
+        .upload-status.loading { color: var(--color-primary); }
+
+        /* Uploaded File Info Card Styling */
+        .uploaded-file-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-top: 16px;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        .uploaded-file-details {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        .file-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            text-align: left;
+        }
+
+        .file-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text);
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-size {
+            font-size: 11px;
+            color: var(--color-text-muted);
+            font-family: var(--font-mono);
+        }
+
+        .delete-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--color-danger);
+            border-radius: 8px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            padding: 0;
+        }
+
+        .delete-btn:hover {
+            background: var(--color-danger);
+            color: var(--color-text);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+            transform: scale(1.05);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-primary);
+            color: var(--color-text-muted);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+        .shortlist-star {
+            position: absolute;
+            top: 16px;
+            right: 80px;
+            font-size: 20px;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            background: none;
+            border: none;
+            transition: var(--transition-smooth);
+            z-index: 10;
+        }
+        .shortlist-star.active {
+            color: var(--color-warning);
+        }
+        .shortlist-star:hover {
+            color: var(--color-warning);
+            transform: scale(1.2);
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--color-primary);
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--color-text-muted);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 8px 12px;
+            position: relative;
+            transition: var(--transition-smooth);
+            border-bottom: 2px solid transparent;
+        }
+        .tab-btn.active {
+            color: var(--color-primary);
+            border-bottom-color: var(--color-primary);
+        }
+        .drawer-left {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 450px;
+            height: 100vh;
+            background: #0b0f19;
+            border-right: 1px solid var(--border-primary);
+            box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+            z-index: 101;
+            transform: translateX(-100%);
+            transition: var(--transition-smooth);
+            display: grid;
+            grid-template-rows: auto 1fr;
+        }
+        @media (max-width: 768px) {
+            .drawer-left {
+                width: 100%;
+            }
+        }
+        .drawer-left.open {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SVG Gradients Definition -->
+    <svg style="width:0; height:0; position:absolute;">
+        <defs>
+            <linearGradient id="gradient-gem" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#f59e0b" />
+                <stop offset="100%" stop-color="#d97706" />
+            </linearGradient>
+            <linearGradient id="gradient-solid" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10b981" />
+                <stop offset="100%" stop-color="#059669" />
+            </linearGradient>
+            <linearGradient id="gradient-potential" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#0891b2" />
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <div class="app-container">
+        
+        <!-- Header -->
+        <header>
+            <div class="header-title-container">
+                <div class="radar-logo">
+                    <div class="radar-circle"></div>
+                    <div class="radar-circle"></div>
+                    <div class="radar-sweep"></div>
+                </div>
+                <div class="logo-text">
+                    <h1>Talent Radar</h1>
+                    <p>Semantic Intelligence Candidate Ranking Engine</p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="db-status">
+                    <span class="status-dot"></span>
+                    <span>Active Candidates Pool: <strong id="db-total-count">520</strong> Profiles</span>
+                </div>
+                <button class="settings-toggle-btn" onclick="openSettingsDrawer()" title="Configure System APIs & OCR Backends">
+                    ⚙️ Settings
+                </button>
+            </div>
+        </header>
+
+
+
+        <!-- Main Grid -->
+        <main class="main-grid">
+            
+            <!-- Left Side: Controls & Visualizer -->
+            <div class="sidebar-container">
+                <!-- Dataset Control Center -->
+                <section class="glass-panel">
+                    <div class="panel-header">
+                        <h2>Dataset Control Center</h2>
+                    </div>
+                    <div class="upload-area" id="upload-zone" onclick="triggerBrowse()">
+                        <span class="upload-icon">📂</span>
+                        <div class="upload-text">
+                            <strong>Drag & drop candidate files (.json, .pdf, .zip)</strong> or click to browse
+                        </div>
+                        <input type="file" id="dataset-file-input" class="file-input" accept=".json,.pdf,.zip" onchange="handleFileSelect(event)">
+                        <div class="upload-progress-container" id="progress-container">
+                            <div class="upload-progress">
+                                <div class="upload-progress-bar" id="progress-bar"></div>
+                            </div>
+                            <div class="upload-status" id="upload-status-text">Uploading...</div>
+                        </div>
+                    </div>
+                    <!-- Uploaded File Info Card -->
+                    <div class="uploaded-file-container" id="uploaded-file-info" style="display: none;">
+                        <div class="uploaded-file-details">
+                            <span class="file-icon">📄</span>
+                            <div class="file-meta">
+                                <div class="file-name" id="uploaded-file-name">candidates.json</div>
+                                <div class="file-size" id="uploaded-file-size">0 KB • 0 profiles</div>
+                            </div>
+                        </div>
+                        <button class="delete-btn" onclick="deleteDataset()" title="Delete and reset dataset">
+                            <span>🗑️</span>
+                        </button>
+                    </div>
+                </section>
+
+
+
+                <!-- Recruiter Query Desk -->
+                <section class="glass-panel">
+                    <div class="panel-header">
+                        <h2>Recruiter Query Desk</h2>
+                    </div>
+
+                <!-- Template Selector -->
+                <div class="template-selector">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px;">
+                        <div class="template-label">Select Job Template</div>
+                        <div class="history-container" style="position: relative;">
+                            <button class="btn-secondary" onclick="toggleHistoryDropdown()" style="padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer;">
+                                🕒 Recent Searches
+                            </button>
+                            <div id="history-dropdown" class="history-dropdown" style="display: none; position: absolute; top: 100%; right: 0; width: 300px; background: #0b0f19; border: 1px solid var(--border-primary); border-radius: 8px; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.5); padding: 8px; max-height: 250px; overflow-y: auto;">
+                                <!-- Filled dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="template-chips" id="templates-container">
+                        <!-- Loaded dynamically -->
+                        <div class="template-chip active" onclick="loadSampleTemplate('react_frontend')">React Frontend</div>
+                        <div class="template-chip" onclick="loadSampleTemplate('python_backend')">Python Backend</div>
+                        <div class="template-chip" onclick="loadSampleTemplate('ml_engineer')">Lead ML Engineer</div>
+                    </div>
+                </div>
+
+                <!-- Inputs Form -->
+                <div class="form-group">
+                    <label for="job-description">Job Description</label>
+                    <textarea id="job-description" placeholder="Paste the job description or select a template above..."></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="seniority-level">Seniority Level</label>
+                        <select id="seniority-level">
+                            <option value="Junior">Junior</option>
+                            <option value="Mid">Mid</option>
+                            <option value="Senior" selected>Senior</option>
+                            <option value="Lead">Lead</option>
+                            <option value="Principal">Principal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sector-level">Macro Sector</label>
+                        <select id="sector-level">
+                            <option value="AUTO" selected>🔮 Auto-Detect Sector</option>
+                            <option value="TECH">💻 Technology & Software</option>
+                            <option value="FIN">💰 Finance & Banking</option>
+                            <option value="HEALTH">🏥 Healthcare & Life Sciences</option>
+                            <option value="LEGAL">⚖️ Legal & Compliance</option>
+                            <option value="REAL">🏢 Real Estate</option>
+                            <option value="MANU">🏭 Manufacturing & Engineering</option>
+                            <option value="COMM">🛒 Commerce & Retail</option>
+                            <option value="LOGI">📦 Logistics & Supply Chain</option>
+                            <option value="MEDIA">🎨 Media & Creative</option>
+                            <option value="ENERGY">⚡ Energy & Utilities</option>
+                            <option value="EDU">🎓 Education</option>
+                            <option value="GOV">🏛️ Government & Public Sector</option>
+                        </select>
+                    </div>
+                </div>
+
+
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="slider-container">
+                        <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+                            <label for="top-k-slider" style="font-size: 13px; font-weight: 500; color: var(--color-text-muted);">Retrieve Top K Candidates</label>
+                            <input type="range" id="top-k-slider" min="10" max="150" step="5" value="50" oninput="document.getElementById('top-k-val').innerText = this.value">
+                        </div>
+                        <span class="slider-value" id="top-k-val">50</span>
+                    </div>
+                </div>
+
+                <!-- Premium Recruiter Weights Controls -->
+                <div class="weight-adjustment-box" style="margin-top: 15px; margin-bottom: 20px; padding: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-primary); border-radius: 8px;">
+                    <div style="font-size: 13px; font-weight: 700; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+                        <span>⚖️ Composite Weight Customizer</span>
+                        <span style="font-size: 11px; text-transform: none; color: var(--color-text-muted);" id="weights-total-badge">Total: 100%</span>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); margin-bottom: 4px;">
+                            <span>🧠 Semantic Alignment (Match)</span>
+                            <span id="weight-semantic-val" style="font-weight: 700; color: var(--color-text-main);">60%</span>
+                        </div>
+                        <input type="range" id="weight-semantic-slider" min="0" max="100" step="5" value="60" oninput="onWeightChange('semantic')" style="width: 100%; accent-color: var(--color-primary);">
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); margin-bottom: 4px;">
+                            <span>📈 Career Momentum (Velocity)</span>
+                            <span id="weight-velocity-val" style="font-weight: 700; color: var(--color-text-main);">25%</span>
+                        </div>
+                        <input type="range" id="weight-velocity-slider" min="0" max="100" step="5" value="25" oninput="onWeightChange('velocity')" style="width: 100%; accent-color: var(--color-secondary);">
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-muted); margin-bottom: 4px;">
+                            <span>📅 Profile Activity (Freshness)</span>
+                            <span id="weight-freshness-val" style="font-weight: 700; color: var(--color-text-main);">15%</span>
+                        </div>
+                        <input type="range" id="weight-freshness-slider" min="0" max="100" step="5" value="15" oninput="onWeightChange('freshness')" style="width: 100%; accent-color: var(--color-warning);">
+                    </div>
+                </div>
+
+                <button class="btn" id="run-btn" onclick="executeRanking()">
+                    <span>🚀</span> Run Radar Scan
+                </button>
+
+                <!-- Pipeline Steps Tracker -->
+                <div class="pipeline-container">
+                    <div class="template-label">Radar Processing Pipeline</div>
+                    <div class="pipeline-steps">
+                        <div class="pipeline-step" id="step-explosion" onclick="toggleStepDetails('details-explosion')">
+                            <div class="step-num">1</div>
+                            <div class="step-name">Query Explosion &amp; Gateway Refinement</div>
+                            <div class="step-badge" id="badge-explosion">Idle</div>
+                        </div>
+                        <div class="step-details-box" id="details-explosion">Refines requirements using Gemini Gateway and expands intent query terms dynamically.</div>
+
+                        <div class="pipeline-step" id="step-retrieval" onclick="toggleStepDetails('details-retrieval')">
+                            <div class="step-num">2</div>
+                            <div class="step-name">Smart Hybrid Pre-filtering</div>
+                            <div class="step-badge" id="badge-retrieval">Idle</div>
+                        </div>
+                        <div class="step-details-box" id="details-retrieval">Tokenizes and filters candidate pool down to top 20% using a fast keyword overlap &amp; title match matrix.</div>
+
+                        <div class="pipeline-step" id="step-rerank" onclick="toggleStepDetails('details-rerank')">
+                            <div class="step-num">3</div>
+                            <div class="step-name">Multi-Agent SLM Swarm Evaluation</div>
+                            <div class="step-badge" id="badge-rerank">Idle</div>
+                        </div>
+                        <div class="step-details-box" id="details-rerank">Spawns a dynamic sector-specific SLM node (e.g. CodeBERT, FinBERT, BioBERT) to batch-evaluate resume chunks.</div>
+
+                        <div class="pipeline-step" id="step-scorer" onclick="toggleStepDetails('details-scorer')">
+                            <div class="step-num">4</div>
+                            <div class="step-name">Momentum &amp; Guardrails Scorer</div>
+                            <div class="step-badge" id="badge-scorer">Idle</div>
+                        </div>
+                        <div class="step-details-box" id="details-scorer">Calculates career velocity slope, profile freshness indices, and applies keyword stuffing penalties &amp; seniority cap guardrails.</div>
+                    </div>
+                </div>
+            </section>
+            </div>
+            
+            <!-- Right Side: Ranked candidates pool -->
+            <section class="glass-panel candidates-panel">
+                <div class="panel-header candidates-list-header">
+                    <h2>Ranked Candidates Pool</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn-secondary" id="export-csv-btn" onclick="exportToCSV()" style="display: none; padding: 6px 12px; font-size: 12px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            📥 Export CSV
+                        </button>
+                        <div class="candidates-count"><span id="ranked-count">0</span> matched</div>
+                    </div>
+                </div>
+
+                <div class="candidates-tabs" style="display: flex; gap: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px; margin-bottom: 16px;">
+                    <button class="tab-btn active" id="tab-all" onclick="switchCandidatesTab('all')">
+                        All Matches
+                    </button>
+                    <button class="tab-btn" id="tab-shortlist" onclick="switchCandidatesTab('shortlist')">
+                        Shortlist ❤️ (<span id="shortlist-count">0</span>)
+                    </button>
+                </div>
+
+                <!-- Recruiter Interactive Filters Toolbar -->
+                <div id="recruiter-filters-toolbar" style="display: none; background: rgba(0, 0, 0, 0.15); border: 1px solid var(--border-primary); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; flex-direction: column; gap: 12px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase;">📍 Fuzzy Location Search</label>
+                            <input type="text" id="filter-location" placeholder="e.g. Remote, San Francisco" style="padding: 8px 12px; font-size: 13px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-primary); border-radius: 6px; color: var(--color-text-main); outline: none; transition: var(--transition-smooth);" oninput="applyRecruiterFilters()">
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase;">🏆 Fit Status Filter</label>
+                            <select id="filter-status" style="padding: 8px 12px; font-size: 13px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-primary); border-radius: 6px; color: var(--color-text-main); outline: none; cursor: pointer; transition: var(--transition-smooth);" onchange="applyRecruiterFilters()">
+                                <option value="ALL">All Match Grades</option>
+                                <option value="GEM">🚀 Top Hidden Gems</option>
+                                <option value="SOLID">🏆 Solid Matches</option>
+                                <option value="POTENTIAL">⭐ Potential Fits</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 16px; background: rgba(255,255,255,0.01); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.02); flex-wrap: wrap;">
+                        <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 200px;">
+                            <label style="font-size: 11px; color: var(--color-text-muted); text-transform: uppercase;">📅 Min Professional Experience: <span id="filter-min-exp-val" style="color: var(--color-primary); font-weight: 700;">0</span> years</label>
+                            <input type="range" id="filter-min-exp" min="0" max="15" step="0.5" value="0" style="width: 100%; accent-color: var(--color-primary); cursor: pointer;" oninput="document.getElementById('filter-min-exp-val').innerText = this.value; applyRecruiterFilters();">
+                        </div>
+                        <button class="btn" id="export-brief-btn" onclick="exportRecruitingBrief()" style="width: auto; padding: 8px 14px; font-size: 12px; font-weight: 600; border-radius: 6px; background: linear-gradient(135deg, var(--color-secondary), var(--color-primary)); align-self: flex-end; box-shadow: none;">
+                            📝 Export AI Brief
+                        </button>
+                    </div>
+                </div>
+
+                <div class="candidates-scroll" id="candidates-container">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🌀</div>
+                        <h3>System Ready for Scanning</h3>
+                        <p>Select a job template on the left panel and hit "Run Radar Scan" to retrieve, analyze, and rank top candidate resumes using multi-layered AI semantics.</p>
+                    </div>
+                </div>
+            </section>
+            
+        </main>
+    </div>
+
+    <!-- Details inspection drawer overlay -->
+    <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+    
+    <!-- Search History Drawer -->
+    <div class="drawer-left" id="history-drawer">
+        <div class="drawer-header" style="padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <h2 style="font-size: 18px; font-weight: 800; color: var(--color-primary); margin: 0; display: flex; align-items: center; gap: 8px;">🕒 Search Query History</h2>
+            <button class="drawer-close" onclick="closeHistoryDrawer()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; transition: var(--transition-smooth);">&times;</button>
+        </div>
+        <div class="drawer-content" id="history-drawer-content" style="padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Loaded dynamically -->
+        </div>
+    </div>
+    
+    <!-- Outreach Modal -->
+    <div id="outreach-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(8, 11, 17, 0.9); z-index: 1000; backdrop-filter: blur(12px); align-items: center; justify-content: center; padding: 24px;">
+        <div class="compare-modal-content" style="background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: 20px; width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-glow); display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <h2 style="font-size: 20px; font-weight: 800; color: var(--color-primary); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">✉️ Draft AI Outreach Email</h2>
+                <button onclick="closeOutreachModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; transition: var(--transition-smooth);">&times;</button>
+            </div>
+            
+            <div style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; gap: 16px; align-items: center;">
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                        <label style="font-size: 12px; color: var(--color-text-muted);">Candidate Name</label>
+                        <input type="text" id="outreach-candidate-name" disabled style="padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-weight: 600; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                        <label for="outreach-tone" style="font-size: 12px; color: var(--color-text-muted);">Email Tone</label>
+                        <select id="outreach-tone" style="padding: 10px; background: var(--bg-surface); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); outline: none; width: 100%; box-sizing: border-box;">
+                            <option value="professional" selected>💼 Professional & Direct</option>
+                            <option value="casual">☕ Warm & Casual</option>
+                            <option value="enthusiastic">🔥 High-Conviction & Enthusiastic</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <label for="outreach-jd" style="font-size: 12px; color: var(--color-text-muted);">Target Job Description / Context</label>
+                    <textarea id="outreach-jd" placeholder="Paste the job description or specific hiring context here..." style="width: 100%; height: 100px; padding: 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-family: var(--font-main); font-size: 13px; resize: vertical; outline: none; box-sizing: border-box;"></textarea>
+                </div>
+                
+                <button class="btn" style="background: linear-gradient(135deg, var(--color-secondary), var(--color-warning)); margin-top: 10px;" onclick="generateOutreachEmail()">
+                    ✨ Generate AI Email Draft
+                </button>
+                
+                <div id="outreach-result-container" style="display: none; flex-direction: column; gap: 6px; margin-top: 10px;">
+                    <label style="font-size: 12px; color: var(--color-primary); font-weight: 700; text-transform: uppercase;">Generated Draft</label>
+                    <textarea id="outreach-result-text" style="width: 100%; height: 250px; padding: 16px; background: rgba(0,0,0,0.4); border: 1px solid var(--color-primary); border-radius: 12px; color: var(--color-text-main); font-family: monospace; font-size: 13px; resize: vertical; outline: none; line-height: 1.5; box-shadow: 0 0 15px rgba(6, 182, 212, 0.1); box-sizing: border-box;"></textarea>
+                    <button class="btn-secondary" style="margin-top: 6px; padding: 10px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border-primary);" onclick="copyOutreachEmail()">
+                        📋 Copy to Clipboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Details inspection drawer -->
+    <div class="drawer" id="profile-drawer">
+        <div class="drawer-header">
+            <h2 id="drawer-header-title">Candidate Details</h2>
+            <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+        </div>
+        
+        <div class="drawer-content" id="drawer-content-body">
+            <!-- Loaded dynamically when inspecting -->
+        </div>
+    </div>
+
+    <!-- Settings Drawer -->
+    <div class="drawer" id="settings-drawer">
+        <div class="drawer-header">
+            <h2>⚙️ System Settings & APIs</h2>
+            <button class="drawer-close" onclick="closeSettingsDrawer()">&times;</button>
+        </div>
+        
+        <div class="drawer-content" style="padding: 24px; overflow-y: auto;">
+            <div class="drawer-alert warning" style="margin-bottom: 20px;">
+                <strong>Local OCR & Hugging Face</strong><br>
+                For visual OCR using local Qwen2-VL or EasyOCR model weights, configuring your Hugging Face Token (HF_TOKEN) allows faster downloads and bypasses standard rate limits.
+            </div>
+            
+            <div style="display: grid; gap: 20px;">
+                <div class="form-group" style="margin-bottom: 0; display: flex; flex-direction: column; gap: 6px;">
+                    <label for="setting-gemini-key" style="font-weight: 600; font-size: 13px; color: var(--color-text-main);">Gemini API Key</label>
+                    <input type="password" id="setting-gemini-key" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-family: var(--font-mono); font-size: 13px;" placeholder="AIzaSy...">
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 0; display: flex; flex-direction: column; gap: 6px;">
+                    <label for="setting-hf-token" style="font-weight: 600; font-size: 13px; color: var(--color-text-main);">Hugging Face Token (HF_TOKEN)</label>
+                    <input type="password" id="setting-hf-token" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-family: var(--font-mono); font-size: 13px;" placeholder="hf_...">
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 0; display: flex; flex-direction: column; gap: 6px;">
+                    <label for="setting-ocr-backend" style="font-weight: 600; font-size: 13px; color: var(--color-text-main);">Local OCR Model Backend</label>
+                    <select id="setting-ocr-backend" style="width: 100%; padding: 12px; background: #0b0f19; border: 1px solid var(--border-primary); border-radius: 8px; color: var(--color-text-main); font-family: var(--font-main); font-size: 13px; cursor: pointer;">
+                        <option value="qwen2.5-vl">Qwen 2.5 VL (Vision-Language OCR - Best Quality)</option>
+                        <option value="easyocr">EasyOCR (Standard Text OCR - Fast Fallback)</option>
+                    </select>
+                </div>
+                
+                <button class="btn" id="save-settings-btn" onclick="saveSettings()" style="margin-top: 10px; width: 100%; padding: 14px; background: linear-gradient(135deg, var(--color-primary), var(--color-secondary)); border: none; font-weight: 700; border-radius: 8px; cursor: pointer; color: white; transition: var(--transition-smooth); font-family: var(--font-main);">
+                    Save Configurations
+                </button>
+                
+                <div id="settings-save-status" style="font-size: 13px; text-align: center; display: none; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-primary);"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Comparison Bar -->
+    <div id="comparison-bar" style="display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: rgba(13, 18, 30, 0.85); border: 1px solid var(--color-primary); border-radius: 12px; padding: 12px 24px; z-index: 999; backdrop-filter: blur(16px); box-shadow: 0 0 30px rgba(6, 182, 212, 0.3); align-items: center; gap: 16px; width: 90%; max-width: 500px; justify-content: space-between;">
+        <div style="font-size: 14px; font-weight: 600; color: var(--color-text-main);">
+            📊 Compare: <span id="compare-count" style="color: var(--color-primary); font-weight: 700;">0</span> / 3 candidates
+        </div>
