@@ -1,5 +1,5 @@
 ---
-title: SwarmMatrix
+title: Job Recruitment
 emoji: 🌌
 colorFrom: indigo
 colorTo: purple
@@ -8,10 +8,10 @@ app_port: 7860
 pinned: false
 ---
 
-# 🧠 SwarmMatrix AI — Talent Radar
+# 🧠 Job Recruitment AI — Talent Radar
 ### *Multi-Agent SLM Swarm Architecture for Intelligent Candidate Ranking & Recruiter Copilot*
 
-> **SwarmMatrix AI** is a production-grade AI recruiting engine that replaces keyword-matching ATS tools with a multi-phase, multi-model pipeline. It combines a Gemini LLM gateway, a swarm of domain-specialized Small Language Models (SLMs), a composite momentum scoring engine, and an intelligent **Recruiter Copilot Toolkit** to surface, evaluate, compare, and engage the *right* candidates — not just the ones with the most buzzwords on their resume.
+> **Job Recruitment AI** is a production-grade AI recruiting engine that replaces keyword-matching ATS tools with a multi-phase, multi-model pipeline. It combines a Gemini LLM gateway, a swarm of domain-specialized Small Language Models (SLMs), a composite momentum scoring engine, and an intelligent **Recruiter Copilot Toolkit** to surface, evaluate, compare, and engage the *right* candidates — not just the ones with the most buzzwords on their resume.
 
 ---
 
@@ -52,7 +52,7 @@ pinned: false
 
 ## 🎯 What It Does
 
-SwarmMatrix AI takes a raw job description and returns a ranked, scored, and explained list of matching candidates from your talent pool. It performs:
+Job Recruitment AI takes a raw job description and returns a ranked, scored, and explained list of matching candidates from your talent pool. It performs:
 
 1. **Semantic understanding** of the JD — not just keyword extraction
 2. **Domain-specialist model routing** — uses a TECH-specific model for tech roles, a FinBERT model for finance roles, etc.
@@ -68,9 +68,9 @@ SwarmMatrix AI takes a raw job description and returns a ranked, scored, and exp
 
 Traditional Applicant Tracking Systems (ATS) rank candidates using **TF-IDF keyword overlap**. A resume that says "AI systems" in a job about AI will rank higher than a specialist who writes about "flash attention kernel optimization" — because "AI" is a keyword match and "flash attention" is not in the JD verbatim.
 
-**SwarmMatrix breaks this pattern with three dimensions of innovation:**
+**Job Recruitment breaks this pattern with three dimensions of innovation:**
 
-| Problem | SwarmMatrix Solution |
+| Problem | Job Recruitment Solution |
 |---|---|
 | Superficial keyword matching | Domain-specialized SLM swarm with semantic cosine similarity |
 | Generic embeddings for all industries | 12-sector model routing (TECH → CodeBERT, FIN → FinBERT, HEALTH → BioBERT...) |
@@ -213,9 +213,9 @@ Only the **top 20%** of candidates by this score (minimum 50 candidates or the w
 
 ### Phase 3: Swarm Matrix Evaluation (SLM Swarm)
 
-**File:** [`talent_radar/matrix_pipeline.py`](talent_radar/matrix_pipeline.py) → `SwarmMatrixRanker`
+**File:** [`talent_radar/matrix_pipeline.py`](talent_radar/matrix_pipeline.py) → `JobRecruitmentRanker`
 
-This is the core innovation. Instead of one generic embedding model for all industries, SwarmMatrix routes to **12 sector-specialized models**:
+This is the core innovation. Instead of one generic embedding model for all industries, Job Recruitment routes to **12 sector-specialized models**:
 
 | Sector Token | Model | Specialty |
 |---|---|---|
@@ -241,7 +241,7 @@ This is the core innovation. Instead of one generic embedding model for all indu
 5. AGGREGATE: MAX(fragment scores) per candidate = Best Chunk Alignment Score
 ```
 
-**Anisotropy Correction:** Pre-trained BERT models suffer from *representation degeneration* — embeddings cluster in a narrow cone, reducing cosine similarity resolution. SwarmMatrix applies **subtraction centering** before cosine computation:
+**Anisotropy Correction:** Pre-trained BERT models suffer from *representation degeneration* — embeddings cluster in a narrow cone, reducing cosine similarity resolution. Job Recruitment applies **subtraction centering** before cosine computation:
 ```python
 mu = torch.mean(all_frag_embs, dim=0, keepdim=True)
 query_emb_centered = query_emb - mu
@@ -284,7 +284,7 @@ If the JD targets Senior/Lead/Principal and the candidate has <2 years of experi
 
 ## 🕸️ The Swarm Matrix — Technical Deep Dive
 
-The name "SwarmMatrix" comes from the core architectural concept: a *swarm* of specialized models, each a node in a routing matrix, evaluating candidates in their domain of expertise.
+The name "Job Recruitment" comes from the core architectural concept: a *swarm* of specialized models, each a node in a routing matrix, evaluating candidates in their domain of expertise.
 
 ### Why Not One Big Model?
 - General-purpose embedding models (e.g., `all-MiniLM-L6-v2`) are trained on diverse corpora — they don't know that "bioavailability" is a medical term or that "flash attention" means GPU kernel efficiency.
@@ -300,7 +300,7 @@ Resumes are not uniformly relevant — a single paragraph about "optimizing flas
 
 ## 🛠️ Recruiter Copilot Toolkit
 
-SwarmMatrix provides an advanced **Recruiter Copilot** directly on the dashboard to help hiring managers deeply vet and engage top-tier talent.
+Job Recruitment provides an advanced **Recruiter Copilot** directly on the dashboard to help hiring managers deeply vet and engage top-tier talent.
 
 ### Tailored Phone Screen Guide Generator
 **File:** [`talent_radar/question_generator.py`](talent_radar/question_generator.py) → `TechnicalQuestionGenerator`
@@ -334,7 +334,7 @@ Uses the selected candidate's profile skills and role title to run a synthetic J
 
 ## 📥 Resume Ingestion Pipeline
 
-The SwarmMatrix resume pipeline handles single PDF uploads, bulk ZIP parsing, and OCR processing of scanned images.
+The Job Recruitment resume pipeline handles single PDF uploads, bulk ZIP parsing, and OCR processing of scanned images.
 
 ```
                   ┌──────────────────────────────┐
@@ -539,7 +539,7 @@ keen-hawking/
     ├── app.py                    # FastAPI web server, all REST API endpoints
     ├── main.py                   # CLI entrypoint (python -m talent_radar.main)
     ├── pipeline.py               # E2E Orchestrator (TalentRadarPipeline)
-    ├── matrix_pipeline.py        # Swarm Matrix: GeminiGateway, SwarmEvaluator, SwarmMatrixRanker
+    ├── matrix_pipeline.py        # Swarm Matrix: GeminiGateway, SwarmEvaluator, JobRecruitmentRanker
     ├── query_expand.py           # Query Explosion: LLM + rule-based semantic expansion
     ├── scorer.py                 # CandidateScorer: composite momentum formula + guardrails
     ├── smart_ingest.py           # Bulk ZIP ingestion: threading, batching, checkpointing
@@ -606,8 +606,8 @@ Open `http://127.0.0.1:8000` in your browser to access the premium recruiter das
 The included `Dockerfile` is configured for **Hugging Face Spaces** (port 7860, UID 1000 non-root user):
 
 ```bash
-docker build -t swarmmatrix-ai .
-docker run -p 7860:7860 -e GEMINI_API_KEY=your-key swarmmatrix-ai
+docker build -t job-recruitment-ai .
+docker run -p 7860:7860 -e GEMINI_API_KEY=your-key job-recruitment-ai
 ```
 
 ---
@@ -631,7 +631,7 @@ docker run -p 7860:7860 -e GEMINI_API_KEY=your-key swarmmatrix-ai
 
 ## 🌐 Sector Coverage
 
-SwarmMatrix routes to a specialized model for each of the 12 industry macro sectors:
+Job Recruitment routes to a specialized model for each of the 12 industry macro sectors:
 
 | Token | Label | Specialized Model |
 |---|---|---|
@@ -652,7 +652,7 @@ SwarmMatrix routes to a specialized model for each of the 12 industry macro sect
 
 ## 📜 License
 
-This project is open-source. Built for the SwarmMatrix AI Talent Radar challenge.
+This project is open-source. Built for the Job Recruitment AI Talent Radar challenge.
 
 ---
 
