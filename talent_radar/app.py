@@ -598,3 +598,417 @@ def api_delete_dataset():
             "count": 0
         }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to reset dataset: {str(e)}")
+
+@app.get("/api/upload/progress/{job_id}")
+async def api_upload_progress(job_id: str):
+    """
+    Server-Sent Events (SSE) endpoint that streams real-time progress
+    for a background Smart Ingest job. Emits a JSON event every 2 seconds
+    with {parsed, total, skipped, failed, percent, status}.
+    """
+    with jobs_lock:
+        if job_id not in _active_jobs:
+            raise HTTPException(status_code=404, detail=f"No active ingest job found with id '{job_id}'.")
+        job = _active_jobs[job_id]
+
+    import asyncio
+
+    async def event_generator():
+        while True:
+            data = job.to_dict()
+
+            # If job is done or errored, send final event and close
+            if job.status in ("done", "error"):
+                # Attach total candidate count from the pool
+                candidates_path = base_dir / "candidates.json"
+                total_count = 0
+                if candidates_path.exists():
+                    try:
+                        with open(candidates_path, "r", encoding="utf-8") as f:
+                            total_count = len(json.load(f))
+                    except Exception:
+                        pass
+                data["total_candidate_count"] = total_count
+
+                yield f"data: {json.dumps(data)}\n\n"
+
+                # Clean up: remove finished job from active tracking to prevent memory leak
+                with jobs_lock:
+                    _active_jobs.pop(job_id, None)
+                break
+
+            yield f"data: {json.dumps(data)}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+class SettingsRequest(BaseModel):
+    gemini_api_key: str | None = None
+    hf_token: str | None = None
+    local_ocr_backend: str | None = None
+
+@app.get("/api/settings")
+def api_get_settings():
+    """Returns currently configured keys and model selections (masked for security)."""
+    gemini_key = os.getenv("GEMINI_API_KEY") or ""
+    hf_tok = os.getenv("HF_TOKEN") or ""
+    ocr_backend = os.getenv("LOCAL_OCR_BACKEND") or "qwen2.5-vl"
+    
+    def mask_key(k):
+        if not k:
+            return ""
+        if len(k) <= 8:
+            return "*" * len(k)
+        return k[:4] + "*" * (len(k) - 8) + k[-4:]
+
+    return {
+        "gemini_api_key_masked": mask_key(gemini_key),
+        "hf_token_masked": mask_key(hf_tok),
+        "local_ocr_backend": ocr_backend
+    }
+
+@app.post("/api/settings")
+def api_post_settings(request: SettingsRequest):
+    """Dynamically writes key configurations back to .env and updates the active process environment variables."""
+    global _pipeline
+    try:
+        env_path = base_dir.parent / ".env"
+        lines = []
+        if env_path.exists():
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                
+        # Parse existing keys
+        env_keys = {}
+        for i, line in enumerate(lines):
+            clean = line.strip()
+            if clean and not clean.startswith("#") and "=" in clean:
+                parts = clean.split("=", 1)
+                env_keys[parts[0].strip()] = (i, parts[1].strip())
+                
+        def update_key_in_lines(key, value):
+            if value is None:
+                return
+            # If value contains asterisks, it means the user kept the masked placeholder - do not overwrite
+            if "*" in value:
+                return
+            
+            # Input sanitization against newline injection attacks
+            if "\n" in value or "\r" in value:
+                raise HTTPException(status_code=400, detail="Invalid character detected in configuration settings.")
+                
+            clean_value = value.strip().strip('"').strip("'")
+            os.environ[key] = clean_value
+            
+            if key == "HF_TOKEN":
+                os.environ["HF_TOKEN"] = clean_value
+                os.environ["HUGGING_FACE_HUB_TOKEN"] = clean_value
+                
+            value_str = f'{key}="{clean_value}"\n' if key != "LOCAL_OCR_BACKEND" else f'{key}={clean_value}\n'
+            if key in env_keys:
+                idx, _ = env_keys[key]
+                lines[idx] = value_str
+            else:
+                lines.append(value_str)
+                
+        update_key_in_lines("GEMINI_API_KEY", request.gemini_api_key)
+        update_key_in_lines("HF_TOKEN", request.hf_token)
+        update_key_in_lines("LOCAL_OCR_BACKEND", request.local_ocr_backend)
+        
+        # Write updated lines back to .env
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+            
+        # Reset the pipeline and OCR singleton to pick up the new keys/tokens instantly
+        with pipeline_lock:
+            _pipeline = None
+        from talent_radar.ocr_engine import LocalOCREngine
+        LocalOCREngine._instance = None
+        
+        return {
+            "status": "success",
+            "message": "System settings and API keys updated successfully."
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
+
+# ===================================================================== #
+#  New Recruiter-Centric Endpoints                                      #
+# ===================================================================== #
+
+class QuestionRequest(BaseModel):
+    job_description: str
+    sector: str = "TECH"
+
+@app.post("/api/candidates/{candidate_id}/questions")
+def api_generate_questions(candidate_id: str, request: QuestionRequest):
+    """Generates 5 personalized phone screen questions using Gemini 2.5 Flash."""
+    jd = request.job_description
+    sector = request.sector
+    if not jd.strip():
+        raise HTTPException(status_code=400, detail="Job description cannot be empty.")
+    
+    pipeline = get_pipeline()
+    # Support both id (frontend usage) and candidate_id (backend json structure)
+    cand = next((c for c in pipeline.candidates_pool if c.get("candidate_id") == candidate_id or c.get("id") == candidate_id), None)
+    
+    if not cand:
+        raise HTTPException(status_code=404, detail=f"Candidate with ID '{candidate_id}' not found in current pool.")
+        
+    from talent_radar.question_generator import TechnicalQuestionGenerator
+    generator = TechnicalQuestionGenerator()
+    try:
+        # Perform quick skills gaps detection if candidate lacks matches/gaps fields
+        if "matched_skills" not in cand or "missing_skills" not in cand:
+            import re
+            from talent_radar.scorer import CandidateScorer
+            from talent_radar.matrix_pipeline import GeminiGateway
+            try:
+                gateway = GeminiGateway()
+                refined_matrix = gateway.route_and_polish(jd, sector)
+                target_keywords = refined_matrix.top_keywords
+            except Exception:
+                target_keywords = list(set(re.findall(r'\b[a-zA-Z]{3,}\b', jd.lower())))[:30]
+                
+            scorer = CandidateScorer(target_keywords=target_keywords, sector=sector)
+            cand_copy = cand.copy()
+            if "semantic_depth_score" not in cand_copy:
+                cand_copy["semantic_depth_score"] = 0.5
+            scored = scorer.score_candidates([cand_copy])
+            cand = scored[0]
+
+        guide = generator.generate_questions(cand, jd, sector)
+        return guide.model_dump()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(e)}")
+
+class CompareRequest(BaseModel):
+    candidate_ids: list[str]
+    job_description: str
+    sector: str = "TECH"
+
+@app.post("/api/compare")
+def api_compare_candidates(request: CompareRequest):
+    """Compares 2 or 3 candidates side-by-side using Gemini 2.5 Flash."""
+    if not request.job_description.strip():
+        raise HTTPException(status_code=400, detail="Job description cannot be empty.")
+    if len(request.candidate_ids) < 2:
+        raise HTTPException(status_code=400, detail="Must provide at least two candidate IDs to compare side-by-side.")
+        
+    pipeline = get_pipeline()
+    selected_cands = []
+    for cid in request.candidate_ids:
+        # Check by candidate_id or id (supporting both frontend/backend naming schemas)
+        cand = next((c for c in pipeline.candidates_pool if c.get("candidate_id") == cid or c.get("id") == cid), None)
+        if cand:
+            selected_cands.append(cand.copy())
+            
+    if not selected_cands:
+        raise HTTPException(status_code=404, detail="None of the specified candidates were found.")
+        
+    # Match skills gaps and metrics
+    from talent_radar.scorer import CandidateScorer
+    from talent_radar.matrix_pipeline import GeminiGateway
+    import re
+    try:
+        gateway = GeminiGateway()
+        refined_matrix = gateway.route_and_polish(request.job_description, request.sector)
+        target_keywords = refined_matrix.top_keywords
+    except Exception:
+        target_keywords = list(set(re.findall(r'\b[a-zA-Z]{3,}\b', request.job_description.lower())))[:30]
+        
+    scorer = CandidateScorer(target_keywords=target_keywords, sector=request.sector)
+    for c in selected_cands:
+        if "semantic_depth_score" not in c:
+            c["semantic_depth_score"] = 0.5
+    scored_cands = scorer.score_candidates(selected_cands)
+    
+    from talent_radar.comparison import CandidateComparator
+    comparator = CandidateComparator()
+    try:
+        synthesis = comparator.compare_candidates(scored_cands, request.job_description)
+        return synthesis.model_dump()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
+
+class ExportRequest(BaseModel):
+    job_description: str
+    seniority_level: str = "Senior"
+    sector: str = "TECH"
+    candidates: list[dict]
+    format: str = "markdown"
+
+@app.post("/api/export")
+def api_export_brief(request: ExportRequest):
+    """Generates and downloads a shareable candidate search brief (Markdown or CSV)."""
+    from talent_radar.exporter import BriefExporter
+    if request.format.lower() == "csv":
+        csv_data = BriefExporter.generate_csv_brief(request.candidates)
+        return StreamingResponse(
+            io.BytesIO(csv_data.encode("utf-8")),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=talent_radar_brief.csv"}
+        )
+    else:
+        md_data = BriefExporter.generate_markdown_brief(
+            request.job_description,
+            request.seniority_level,
+            request.sector,
+            request.candidates
+        )
+        return StreamingResponse(
+            io.BytesIO(md_data.encode("utf-8")),
+            media_type="text/markdown",
+            headers={"Content-Disposition": "attachment; filename=talent_radar_brief.md"}
+        )
+
+class OutreachRequest(BaseModel):
+    job_description: str
+    tone: str = "professional"
+
+@app.post("/api/candidates/{candidate_id}/outreach")
+def api_candidate_outreach(candidate_id: str, request: OutreachRequest):
+    """Generates a highly-personalized outreach email using Gemini 2.5 Flash."""
+    pipeline = get_pipeline()
+    cand = next((c for c in pipeline.candidates_pool if c.get("candidate_id") == candidate_id or c.get("id") == candidate_id), None)
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+        
+    skills = ", ".join(cand.get("skills_listed", []))
+    title = cand.get("current_title", "Software Engineer")
+    name = cand.get("name", "Candidate")
+    experience = cand.get("years_experience", 1.0)
+    
+    # Check if Gemini key is available
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        try:
+            from google import genai
+            from google.genai import types
+            
+            client = genai.Client(api_key=api_key)
+            prompt = f"""
+            Write a personalized recruitment outreach email to the candidate below.
+            
+            Candidate Details:
+            - Name: {name}
+            - Current Title: {title}
+            - Experience: {experience} years
+            - Skills: {skills}
+            
+            Target Job Description:
+            "{request.job_description}"
+            
+            Email Tone: {request.tone}
+            
+            Requirements:
+            1. Keep it professional, highly engaging, and not overly salesy.
+            2. Proactively mention their specific skills ({skills}) and explain why they are a perfect fit for this role.
+            3. Make it concise and end with a call to action (scheduling a brief call).
+            4. Do not include placeholders like "[Your Name]". Write the email as a senior recruiter from "SwarmMatrix executive search".
+            """
+            
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction="You are a premium headhunter and tech recruiter known for writing high-conversion outreach emails.",
+                    temperature=0.7
+                )
+            )
+            email_content = response.text.strip()
+            return {
+                "status": "success",
+                "email": email_content
+            }
+        except Exception as e:
+            print(f"[Outreach Engine] Structured generation error: {e}. Cascading to local fallback...")
+            
+    # Fallback email generation
+    tone_greeting = "Hi" if request.tone.lower() == "casual" else "Dear"
+    salutation = "Best regards,\nThe SwarmMatrix Executive Search Team"
+    
+    fallback_email = f"""Subject: Exciting Career Opportunity: {title} Role at SwarmMatrix Client
+
+{tone_greeting} {name},
+
+I hope this email finds you well. 
+
+I came across your impressive profile while sourcing talent for a highly selective {title} position. Your extensive background as a {title} with {experience:.1f} years of experience and your deep expertise in {skills or "cutting-edge engineering stacks"} immediately stood out to us.
+
+We are currently representing a high-growth client seeking a key contributor to lead development in areas that align perfectly with your technical skillset. Given your experience, we believe you would bring immense value and unique insights to their engineering team.
+
+I would love to schedule a brief 10-minute introductory call to share more about the role, the team culture, and see if this aligns with your career goals. 
+
+Would you be open to a quick call sometime this week? Let me know a few times that work best for you.
+
+{salutation}"""
+    
+    return {
+        "status": "success",
+        "email": fallback_email.strip()
+    }
+
+@app.post("/api/candidates/{candidate_id}/similar")
+def api_candidate_similar(candidate_id: str):
+    """Retrieves candidates matching a target candidate profile's skills and title."""
+    pipeline = get_pipeline()
+    cand = next((c for c in pipeline.candidates_pool if c.get("candidate_id") == candidate_id or c.get("id") == candidate_id), None)
+    if not cand:
+        raise HTTPException(status_code=404, detail="Candidate not found.")
+        
+    skills = ", ".join(cand.get("skills_listed", []))
+    title = cand.get("current_title", "Software Engineer")
+    
+    # Mock job description to find candidates similar to this one
+    job_description = f"Looking for a {title} skilled in {skills}."
+    
+    try:
+        # Run ranking pipeline using the target candidate's profile
+        candidates, expanded_query, timings = pipeline.run(
+            job_description=job_description,
+            seniority_level=cand.get("seniority_level", "Senior"),
+            top_k=50,
+            sector="TECH"
+        )
+        
+        # Exclude the source candidate themselves from the similarity list
+        similar_candidates = [c for c in candidates if c.get("candidate_id") != candidate_id][:10]
+        
+        # Format candidate IDs
+        for c in similar_candidates:
+            if "candidate_id" in c:
+                c["id"] = c["candidate_id"]
+                
+        return {
+            "status": "success",
+            "candidates": similar_candidates,
+            "query_used": job_description,
+            "timings": timings
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Similarity search error: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    # Start web server when executing directly
+    uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
