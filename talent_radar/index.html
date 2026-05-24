@@ -2798,3 +2798,906 @@
         // Find Similar Cloner
         async function findSimilarCandidates(candidateId) {
             const drawer = document.getElementById('profile-drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            
+            drawer.classList.remove('open');
+            overlay.classList.remove('open');
+            
+            const runBtn = document.getElementById('run-btn');
+            runBtn.disabled = true;
+            runBtn.innerHTML = `<span>🌀</span> Cloning Candidate Profile...`;
+            
+            resetPipelineSteps();
+            setStepState('step-explosion', 'badge-explosion', 'Running...', 'active');
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/candidates/${candidateId}/similar`, {
+                    method: 'POST'
+                });
+                
+                if (!res.ok) {
+                    throw new Error("Similarity search network error");
+                }
+                
+                const data = await res.json();
+                
+                setStepState('step-explosion', 'badge-explosion', `100ms`, 'completed');
+                document.getElementById('details-explosion').innerText = data.query_used;
+                
+                setStepState('step-retrieval', 'badge-retrieval', `completed`, 'completed');
+                setStepState('step-rerank', 'badge-rerank', `completed`, 'completed');
+                setStepState('step-scorer', 'badge-scorer', `completed`, 'completed');
+                
+                renderCandidates(data.candidates);
+                
+                document.getElementById('candidates-container').scrollIntoView({ behavior: 'smooth' });
+                
+                showToast("Successfully cloned candidate profile & populated matches!");
+            } catch (err) {
+                alert("Similarity search failed: " + err.message);
+            } finally {
+                runBtn.disabled = false;
+                runBtn.innerHTML = `<span>🚀</span> Run Radar Scan`;
+            }
+        }
+
+        // Export Search Results to CSV
+        function exportToCSV() {
+            if (activeCandidates.length === 0) {
+                alert("No candidate results to export.");
+                return;
+            }
+            
+            const headers = ['Rank', 'Name', 'Current Title', 'Composite Score', 'Semantic Depth', 'Velocity Score', 'Freshness', 'Is Shortlisted', 'Reasoning'];
+            const shortlist = getShortlist();
+            
+            const rows = activeCandidates.map((cand, index) => [
+                index + 1,
+                (cand.name || "").replace(/,/g, ' '),
+                (cand.current_title || "").replace(/,/g, ' '),
+                cand.final_score.toFixed(1),
+                cand.semantic_score + '%',
+                cand.velocity_score,
+                cand.freshness_label,
+                shortlist[cand.id] ? 'YES' : 'NO',
+                `"${(cand.reasoning || "").replace(/"/g, '""')}"`
+            ]);
+            
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `talent_radar_search_export_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Side-by-Side Comparison Controllers
+        function toggleCompare(candId, checkbox) {
+            if (checkbox.checked) {
+                if (selectedCompareIds.length >= 3) {
+                    alert("You can compare a maximum of 3 candidates side-by-side.");
+                    checkbox.checked = false;
+                    return;
+                }
+                if (!selectedCompareIds.includes(candId)) {
+                    selectedCompareIds.push(candId);
+                }
+            } else {
+                selectedCompareIds = selectedCompareIds.filter(id => id !== candId);
+            }
+            
+            updateComparisonBar();
+        }
+
+        function updateComparisonBar() {
+            const bar = document.getElementById('comparison-bar');
+            const countEl = document.getElementById('compare-count');
+            
+            if (selectedCompareIds.length > 0) {
+                countEl.innerText = selectedCompareIds.length;
+                bar.style.display = 'flex';
+            } else {
+                bar.style.display = 'none';
+            }
+        }
+
+        function clearComparison() {
+            selectedCompareIds = [];
+            document.querySelectorAll('.compare-checkbox').forEach(cb => cb.checked = false);
+            updateComparisonBar();
+        }
+
+        function closeCompareModal() {
+            document.getElementById('compare-modal').style.display = 'none';
+        }
+
+        function launchComparisonModal() {
+            if (selectedCompareIds.length === 0) return;
+            
+            const modal = document.getElementById('compare-modal');
+            const body = document.getElementById('compare-modal-body');
+            body.innerHTML = "";
+            
+            const candidatesToCompare = [];
+            selectedCompareIds.forEach(id => {
+                let cand = activeCandidates.find(c => c.id === id);
+                if (!cand) {
+                    const shortlist = getShortlist();
+                    cand = shortlist[id];
+                }
+                if (cand) candidatesToCompare.push(cand);
+            });
+            
+            if (candidatesToCompare.length === 0) {
+                alert("No candidate data available for comparison.");
+                return;
+            }
+            
+            candidatesToCompare.forEach(cand => {
+                const column = document.createElement('div');
+                column.className = 'compare-column';
+                column.style.background = 'rgba(255,255,255,0.02)';
+                column.style.border = '1px solid var(--border-primary)';
+                column.style.borderRadius = '16px';
+                column.style.padding = '20px';
+                column.style.display = 'flex';
+                column.style.flexDirection = 'column';
+                column.style.gap = '16px';
+                column.style.minWidth = '280px';
+                
+                let statusClass = "longshot";
+                if (cand.status_label.includes("Hidden Gem")) statusClass = "gem";
+                else if (cand.status_label.includes("Solid Match")) statusClass = "solid";
+                else if (cand.status_label.includes("Potential Fit")) statusClass = "potential";
+                
+                const jdText = document.getElementById('job-description').value;
+                const gap = analyzeSkillsGap(cand, jdText);
+                
+                const matchedSkillsTags = gap.matches.map(s => `<span style="background: rgba(16, 185, 129, 0.1); color: #34d399; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.2); font-weight: 600;">${s}</span>`).join(' ') || '<span style="color: var(--color-text-muted); font-size: 12px; font-style: italic;">None</span>';
+                const gapSkillsTags = gap.gaps.map(s => `<span style="background: rgba(239, 68, 68, 0.1); color: #f87171; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.2); font-weight: 600;">${s}</span>`).join(' ') || '<span style="color: var(--color-text-muted); font-size: 12px; font-style: italic;">None</span>';
+
+                column.innerHTML = `
+                    <div style="text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+                        <h3 style="font-size: 18px; font-weight: 800; color: var(--color-text-main); margin-bottom: 4px;">${cand.name}</h3>
+                        <div style="font-size: 13px; color: var(--color-text-muted); font-weight: 500; margin-bottom: 12px;">${cand.current_title}</div>
+                        <span class="status-chip ${statusClass}">${cand.status_label}</span>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-around; background: rgba(0,0,0,0.15); padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
+                        <div style="text-align: center;">
+                            <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: 2px; text-transform: uppercase;">Composite</div>
+                            <div style="font-size: 20px; font-weight: 800; color: var(--color-primary);">${cand.final_score.toFixed(0)}</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: 2px; text-transform: uppercase;">Experience</div>
+                            <div style="font-size: 20px; font-weight: 800; color: var(--color-secondary);">${cand.years_experience || cand.career_history.length}y</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="font-size: 12px; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 8px; font-weight: 700; letter-spacing: 0.5px;">Candidate Pitch</h4>
+                        <p style="font-size: 13px; line-height: 1.5; color: var(--color-text-main); background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">${cand.reasoning}</p>
+                    </div>
+
+                    <div>
+                        <h4 style="font-size: 12px; text-transform: uppercase; color: #34d399; margin-bottom: 8px; font-weight: 700; letter-spacing: 0.5px;">✓ Core Matches (${gap.matches.length})</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${matchedSkillsTags}
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="font-size: 12px; text-transform: uppercase; color: #f87171; margin-bottom: 8px; font-weight: 700; letter-spacing: 0.5px;">⚠️ Skill Gaps (${gap.gaps.length})</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            ${gapSkillsTags}
+                        </div>
+                    </div>
+
+                    <div style="margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); text-align: center;">
+                        <button class="btn" id="inspect-compare-btn-${cand.id}" style="padding: 8px 16px; font-size: 12px; width: 100%;">
+                            Full Inspection
+                        </button>
+                    </div>
+                `;
+                
+                // Add event listener programmatically to avoid complex JSON.stringify string escapes
+                setTimeout(() => {
+                    const btn = document.getElementById(`inspect-compare-btn-${cand.id}`);
+                    if (btn) {
+                        btn.onclick = () => {
+                            closeCompareModal();
+                            inspectCandidate(cand);
+                        };
+                    }
+                }, 50);
+
+                body.appendChild(column);
+            });
+            
+            modal.style.display = 'flex';
+        }
+
+
+        // Upload Dataset Handling
+        function triggerBrowse() {
+            document.getElementById('dataset-file-input').click();
+        }
+
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length > 0) {
+                uploadDatasetFile(files[0]);
+            }
+        }
+
+        // Setup Drag & Drop listeners on window load
+        window.addEventListener('DOMContentLoaded', () => {
+            const zone = document.getElementById('upload-zone');
+            if (zone) {
+                // Prevent defaults for all drag events
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    zone.addEventListener(eventName, preventDefaults, false);
+                });
+
+                function preventDefaults (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                // Add/remove active class
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    zone.addEventListener(eventName, () => zone.classList.add('dragover'), false);
+                });
+
+                ['dragleave', 'drop'].forEach(eventName => {
+                    zone.addEventListener(eventName, () => zone.classList.remove('dragover'), false);
+                });
+
+                // Handle dropped files
+                zone.addEventListener('drop', (e) => {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    if (files.length > 0) {
+                        uploadDatasetFile(files[0]);
+                    }
+                }, false);
+            }
+        });
+
+        async function uploadDatasetFile(file) {
+            if (!file) return;
+            const isJson = file.name.endsWith('.json');
+            const isPdf = file.name.endsWith('.pdf');
+            const isZip = file.name.endsWith('.zip');
+            
+            if (!isJson && !isPdf && !isZip) {
+                showUploadStatus("Error: Only JSON dataset files, PDF resumes, and ZIP archives are allowed.", "error");
+                return;
+            }
+
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+
+            progressContainer.style.display = 'flex';
+            
+            let statusText = "Uploading file...";
+            if (isPdf) {
+                statusText = "Extracting PDF text...";
+            } else if (isZip) {
+                statusText = "Uploading ZIP archive...";
+            } else {
+                statusText = "Validating JSON structure...";
+            }
+            showUploadStatus(statusText, "loading");
+            progressBar.style.width = '5%';
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                // ---- ZIP: Background job with SSE progress stream ----
+                if (isZip && data.status === "accepted" && data.job_id) {
+                    showUploadStatus("Smart Ingest started. Extracting PDFs...", "loading");
+                    progressBar.style.width = '10%';
+
+                    // Open SSE connection for real-time progress
+                    const evtSource = new EventSource(`${API_BASE}/api/upload/progress/${data.job_id}`);
+
+                    evtSource.onmessage = function(event) {
+                        try {
+                            const progress = JSON.parse(event.data);
+                            const pct = Math.max(progress.percent || 0, 5);
+                            progressBar.style.width = `${pct}%`;
+
+                            if (progress.status === "running") {
+                                const totalToProcess = progress.total_files - progress.skipped_files;
+                                const processed = progress.parsed_count + progress.failed_count;
+                                let msg = `Parsing resumes: ${progress.parsed_count} parsed`;
+                                if (progress.skipped_files > 0) {
+                                    msg += `, ${progress.skipped_files} skipped (already imported)`;
+                                }
+                                if (progress.failed_count > 0) {
+                                    msg += `, ${progress.failed_count} failed`;
+                                }
+                                msg += ` — ${pct}%`;
+                                showUploadStatus(msg, "loading");
+                            } else if (progress.status === "done") {
+                                evtSource.close();
+                                progressBar.style.width = '100%';
+                                const totalCount = progress.total_candidate_count || progress.parsed_count;
+                                showUploadStatus(
+                                    `Success: Parsed ${progress.parsed_count} resumes` +
+                                    (progress.skipped_files > 0 ? `, skipped ${progress.skipped_files}` : '') +
+                                    (progress.failed_count > 0 ? `, ${progress.failed_count} failed` : '') +
+                                    `. Total pool: ${totalCount} candidates.`,
+                                    "success"
+                                );
+
+                                // Show uploaded file card
+                                const infoCard = document.getElementById('uploaded-file-info');
+                                const fileNameEl = document.getElementById('uploaded-file-name');
+                                const fileSizeEl = document.getElementById('uploaded-file-size');
+                                const fileIconEl = infoCard.querySelector('.file-icon');
+                                if (fileIconEl) fileIconEl.innerText = "📦";
+                                fileNameEl.innerText = file.name;
+                                fileSizeEl.innerText = `${formatBytes(file.size)} • ${totalCount} profiles`;
+                                infoCard.style.display = 'flex';
+
+                                fetchStatistics();
+
+                                setTimeout(() => {
+                                    progressContainer.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                }, 5000);
+                            } else if (progress.status === "error") {
+                                evtSource.close();
+                                progressBar.style.width = '0%';
+                                showUploadStatus(
+                                    `Error: ${progress.error_message || "Smart ingest failed."}` +
+                                    (progress.parsed_count > 0 ? ` (${progress.parsed_count} were saved before failure)` : ''),
+                                    "error"
+                                );
+                                // Still refresh stats in case partial progress was checkpointed
+                                fetchStatistics();
+                            }
+                        } catch (parseErr) {
+                            console.error("SSE parse error:", parseErr);
+                        }
+                    };
+
+                    evtSource.onerror = function() {
+                        evtSource.close();
+                        // Don't show error immediately — the job may have finished
+                        // between the last event and the connection drop.
+                        showUploadStatus("Connection to progress stream lost. Refreshing status...", "loading");
+                        fetchStatistics();
+                        setTimeout(() => {
+                            progressContainer.style.display = 'none';
+                            progressBar.style.width = '0%';
+                        }, 3000);
+                    };
+
+                    return;  // Exit — SSE handlers manage the rest
+                }
+
+                // ---- PDF / JSON: Synchronous response (existing behavior) ----
+                if (response.ok && data.status === "success") {
+                    progressBar.style.width = '100%';
+                    showUploadStatus(`Success: ${data.message}`, "success");
+                    
+                    // Show uploaded file card
+                    const infoCard = document.getElementById('uploaded-file-info');
+                    const fileNameEl = document.getElementById('uploaded-file-name');
+                    const fileSizeEl = document.getElementById('uploaded-file-size');
+                    const fileIconEl = infoCard.querySelector('.file-icon');
+                    
+                    if (fileIconEl) {
+                        fileIconEl.innerText = isPdf ? "📕" : "📄";
+                    }
+                    
+                    fileNameEl.innerText = file.name;
+                    fileSizeEl.innerText = `${formatBytes(file.size)} • ${data.count} profiles`;
+                    infoCard.style.display = 'flex';
+                    
+                    // Refresh demographics & counts on screen
+                    fetchStatistics();
+                    
+                    // Collapse progress after 4s
+                    setTimeout(() => {
+                        progressContainer.style.display = 'none';
+                        progressBar.style.width = '0%';
+                    }, 4000);
+                } else {
+                    progressBar.style.width = '0%';
+                    showUploadStatus(`Error: ${data.detail || data.message || "Failed to upload"}`, "error");
+                }
+            } catch (err) {
+                console.error(err);
+                progressBar.style.width = '0%';
+                showUploadStatus("Error: Network failure or backend offline.", "error");
+            }
+        }
+
+        function showUploadStatus(msg, type) {
+            const statusText = document.getElementById('upload-status-text');
+            statusText.innerText = msg;
+            statusText.className = `upload-status ${type}`;
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!bytes || bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        async function deleteDataset() {
+            if (!confirm("Are you sure you want to clear the candidate database and restore to a clean slate (0 candidates)?")) {
+                return;
+            }
+            
+            const infoCard = document.getElementById('uploaded-file-info');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress-bar');
+            
+            progressContainer.style.display = 'flex';
+            showUploadStatus("Clearing candidate database...", "loading");
+            progressBar.style.width = '30%';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/upload`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === "success") {
+                    progressBar.style.width = '100%';
+                    showUploadStatus("Success: Candidate database cleared.", "success");
+                    
+                    // Hide uploaded file card
+                    infoCard.style.display = 'none';
+                    
+                    // Refresh demographics & counts on screen
+                    fetchStatistics();
+                    
+                    setTimeout(() => {
+                        progressContainer.style.display = 'none';
+                        progressBar.style.width = '0%';
+                    }, 3000);
+                } else {
+                    progressBar.style.width = '0%';
+                    showUploadStatus(`Error: ${data.detail || data.message || "Failed to clear"}`, "error");
+                }
+            } catch (err) {
+                console.error(err);
+                progressBar.style.width = '0%';
+                showUploadStatus("Error: Network failure or backend offline.", "error");
+            }
+        }
+
+        function closeDrawer() {
+            document.getElementById('profile-drawer').classList.remove('open');
+            document.getElementById('history-drawer').classList.remove('open');
+            document.getElementById('settings-drawer').classList.remove('open');
+            document.getElementById('drawer-overlay').classList.remove('open');
+        }
+
+        async function openSettingsDrawer() {
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('setting-gemini-key').value = data.gemini_api_key_masked || "";
+                    document.getElementById('setting-hf-token').value = data.hf_token_masked || "";
+                    document.getElementById('setting-ocr-backend').value = data.local_ocr_backend || "qwen2.5-vl";
+                }
+            } catch (err) {
+                console.error("Failed to load settings:", err);
+            }
+            
+            document.getElementById('settings-drawer').classList.add('open');
+            document.getElementById('drawer-overlay').classList.add('open');
+            document.getElementById('drawer-overlay').onclick = closeSettingsDrawer;
+        }
+
+        function closeSettingsDrawer() {
+            document.getElementById('settings-drawer').classList.remove('open');
+            document.getElementById('drawer-overlay').classList.remove('open');
+            document.getElementById('drawer-overlay').onclick = closeDrawer;
+            document.getElementById('settings-save-status').style.display = 'none';
+        }
+
+        async function saveSettings() {
+            const btn = document.getElementById('save-settings-btn');
+            const status = document.getElementById('settings-save-status');
+            
+            const gemini_key = document.getElementById('setting-gemini-key').value.trim();
+            const hf_token = document.getElementById('setting-hf-token').value.trim();
+            const local_ocr_backend = document.getElementById('setting-ocr-backend').value;
+            
+            btn.disabled = true;
+            btn.innerText = "Saving settings...";
+            status.style.display = 'block';
+            status.style.color = 'var(--color-text-muted)';
+            status.innerText = "Updating backend environment variables...";
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        gemini_api_key: gemini_key,
+                        hf_token: hf_token,
+                        local_ocr_backend: local_ocr_backend
+                    })
+                });
+                
+                if (response.ok) {
+                    status.style.color = 'var(--color-success)';
+                    status.innerText = "Settings updated successfully! Backend reloaded.";
+                    
+                    setTimeout(async () => {
+                        const getResp = await fetch(`${API_BASE}/api/settings`);
+                        if (getResp.ok) {
+                            const data = await getResp.json();
+                            document.getElementById('setting-gemini-key').value = data.gemini_api_key_masked || "";
+                            document.getElementById('setting-hf-token').value = data.hf_token_masked || "";
+                            document.getElementById('setting-ocr-backend').value = data.local_ocr_backend || "qwen2.5-vl";
+                        }
+                        status.style.display = 'none';
+                    }, 1500);
+                } else {
+                    const errData = await response.json();
+                    status.style.color = 'var(--color-danger)';
+                    status.innerText = `Error: ${errData.detail || "Failed to save settings."}`;
+                }
+            } catch (err) {
+                console.error(err);
+                status.style.color = 'var(--color-danger)';
+                status.innerText = "Error: Network failure or backend offline.";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Save Configurations";
+            }
+        }
+
+        // ===================================================================== #
+        //  New Recruiter-Centric Interactive Features (JS)                     #
+        // ===================================================================== #
+        let rawCandidatesPool = [];
+
+        function applyRecruiterFilters() {
+            if (rawCandidatesPool) {
+                rawCandidatesPool.forEach(c => {
+                    if (!c.id && c.candidate_id) c.id = c.candidate_id;
+                });
+            }
+            const locVal = document.getElementById('filter-location').value.toLowerCase().trim();
+            const statusVal = document.getElementById('filter-status').value;
+            const minExpVal = parseFloat(document.getElementById('filter-min-exp').value);
+
+            let filtered = rawCandidatesPool;
+
+            // 1. Filter by location
+            if (locVal) {
+                filtered = filtered.filter(c => c.location && c.location.toLowerCase().includes(locVal));
+            }
+
+            // 2. Filter by Match Status
+            if (statusVal !== "ALL") {
+                filtered = filtered.filter(c => {
+                    const status = c.status_label || "";
+                    if (statusVal === "GEM") return status.includes("Hidden Gem");
+                    if (statusVal === "SOLID") return status.includes("Solid Match");
+                    if (statusVal === "POTENTIAL") return status.includes("Potential Fit");
+                    return true;
+                });
+            }
+
+            // 3. Filter by min experience
+            if (minExpVal > 0) {
+                filtered = filtered.filter(c => c.years_experience >= minExpVal);
+            }
+
+            activeCandidates = filtered;
+            
+            // Render the subset directly to avoid infinite loop
+            const container = document.getElementById('candidates-container');
+            const countText = document.getElementById('ranked-count');
+            const exportBtn = document.getElementById('export-csv-btn');
+            
+            if (exportBtn) {
+                exportBtn.style.display = filtered.length > 0 ? 'inline-block' : 'none';
+            }
+            countText.innerText = filtered.length;
+            container.innerHTML = "";
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <h3>No matches found</h3>
+                        <p>No candidates fit within the selected filters or minimum score thresholds.</p>
+                    </div>`;
+                return;
+            }
+
+            const shortlist = getShortlist();
+            filtered.forEach((cand, index) => {
+                const card = document.createElement('div');
+                const isShortlisted = !!shortlist[cand.id];
+                const isCompared = selectedCompareIds.includes(cand.id);
+                
+                let statusClass = "longshot";
+                let statusIcon = "💎";
+                if (cand.status_label.includes("Hidden Gem")) { statusClass = "gem"; statusIcon = "🚀"; }
+                else if (cand.status_label.includes("Solid Match")) { statusClass = "solid"; statusIcon = "🏆"; }
+                else if (cand.status_label.includes("Potential Fit")) { statusClass = "potential"; statusIcon = "⭐"; }
+                
+                card.className = `candidate-card ${statusClass}`;
+                card.onclick = () => inspectCandidate(cand);
+                
+                let guardrailBadges = "";
+                if (cand.guardrail_keyword_penalty_applied) {
+                    guardrailBadges += `<div class="guardrail-dot keyword" title="Keyword Overfitter Penalty Applied: 15% score reduction">K</div>`;
+                }
+                if (cand.guardrail_seniority_cap_applied) {
+                    guardrailBadges += `<div class="guardrail-dot experience" title="Seniority Mismatch Cap Applied: Score capped at 65">S</div>`;
+                }
+
+                const showWarning = cand.name_not_extracted || cand.name === "Unknown Candidate" || !cand.name;
+                const displayName = showWarning ? `Unknown Candidate <span class="warning-badge" style="background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 700; margin-left: 8px;">⚠️ Name Not Extracted</span>` : cand.name;
+
+                const rawScoreVal = cand.raw_semantic_score !== undefined ? cand.raw_semantic_score : (cand.semantic_score / 100);
+                const rawScorePercent = (rawScoreVal * 100).toFixed(1);
+
+                card.innerHTML = `
+                    <div class="rank-badge">${(index + 1).toString().padStart(2, '0')}</div>
+                    <div class="candidate-info">
+                        <div class="candidate-header-row" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <span class="candidate-name">${displayName}</span>
+                            <span class="status-chip ${statusClass}">${statusIcon} ${cand.status_label.replace(/[🚀🏆⭐]/g, '')}</span>
+                            <div class="guardrail-indicators">${guardrailBadges}</div>
+                        </div>
+                        <div class="candidate-title-row" style="margin-top: 4px; margin-bottom: 8px;">
+                            <span class="candidate-title">${cand.current_title}</span>
+                        </div>
+                        <p class="candidate-reasoning">${cand.reasoning}</p>
+                        <div class="score-badges">
+                            <div class="score-badge" title="Score represents raw semantic similarity. Relative rank normalized within current pool.">
+                                Semantic Depth: <span>${rawScorePercent}%</span>
+                                <span style="font-size: 10px; color: var(--color-text-muted); display: block; margin-top: 2px;">Rank ${index + 1} of ${filtered.length}</span>
+                            </div>
+                            <div class="score-badge">Velocity Index: <span>${cand.velocity_score}/10</span></div>
+                            <div class="score-badge">Freshness: <span>${cand.freshness_label}</span></div>
+                        </div>
+                    </div>
+                    <div class="candidate-card-actions" style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; justify-content: center; margin-right: 10px;">
+                        <button class="shortlist-star ${isShortlisted ? 'active' : ''}" onclick="event.stopPropagation(); toggleShortlist('${cand.id}')" title="Pin to Shortlist">❤️</button>
+                        <label class="compare-label" onclick="event.stopPropagation();">
+                            <input type="checkbox" class="compare-checkbox" data-id="${cand.id}" onclick="event.stopPropagation(); toggleCompare('${cand.id}', this)" ${isCompared ? 'checked' : ''}>
+                            Compare
+                        </label>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function generatePhoneScreenQuestions(candId) {
+            const btn = document.getElementById(`generate-questions-btn-${candId}`);
+            const container = document.getElementById(`interview-questions-box-${candId}`);
+            const loadingText = document.getElementById(`interview-questions-loading-${candId}`);
+            const jd = document.getElementById('job-description').value;
+            const sector = activeSector || 'TECH';
+
+            if (!jd.trim()) {
+                alert("Job description is required to generate questions.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = "⚡ Generating interview guide...";
+            loadingText.innerText = "Connecting to Swarm Matrix AI Gateway...";
+
+            try {
+                const res = await fetch(`${API_BASE}/api/candidates/${candId}/questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_description: jd,
+                        sector: sector
+                    })
+                });
+
+                if (!res.ok) throw new Error("Could not retrieve custom questions.");
+                const data = await res.json();
+
+                let html = `
+                    <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; text-align: left; margin-top: 10px;">
+                        <h4 style="font-size: 13px; color: var(--color-primary); text-transform: uppercase; font-weight: 700; border-bottom: 1px solid rgba(6, 182, 212, 0.2); padding-bottom: 6px; margin-bottom: 4px;">
+                            📋 5 Personalized Interview Questions
+                        </h4>
+                `;
+
+                data.questions.forEach((q, idx) => {
+                    html += `
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                            <div style="font-weight: 700; font-size: 13px; color: var(--color-text-main);">
+                                Q${idx+1}: ${q.question}
+                            </div>
+                            <div style="font-size: 12px; line-height: 1.4; color: var(--color-text-muted); background: rgba(0,0,0,0.15); padding: 8px 10px; border-radius: 6px;">
+                                <strong style="color: var(--color-success); font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 4px;">💡 Recruiters Listen-For Guide</strong>
+                                ${q.expected_answer}
+                            </div>
+                            <div style="font-size: 11px; font-style: italic; color: rgba(255,255,255,0.3);">
+                                <strong>Rationale:</strong> ${q.rationale}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+
+            } catch (err) {
+                console.error(err);
+                loadingText.innerText = "Error generating technical screen questions. Check your settings / API key.";
+                btn.disabled = false;
+                btn.innerHTML = "⚡ Retry Question Generation";
+            }
+        }
+
+        async function generateAiComparisonSynthesis() {
+            const btn = document.getElementById('generate-compare-ai-btn');
+            const section = document.getElementById('compare-ai-synthesis-section');
+            const content = document.getElementById('compare-ai-synthesis-content');
+            const jd = document.getElementById('job-description').value;
+            const sector = activeSector || 'TECH';
+
+            if (selectedCompareIds.length === 0) return;
+
+            btn.disabled = true;
+            btn.innerHTML = "🌀 Synthesizing Candidate Matrix...";
+            section.style.display = 'flex';
+            content.innerHTML = `<span style="font-family: var(--font-mono); font-size: 13px; color: var(--color-text-muted); text-align: center; width: 100%;">AI Agent routing to specialized SLM swarm comparison matrix nodes...</span>`;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/compare`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        candidate_ids: selectedCompareIds,
+                        job_description: jd,
+                        sector: sector
+                    })
+                });
+
+                if (!res.ok) throw new Error("AI Comparison synthesis failed.");
+                const data = await res.json();
+
+                let html = `
+                    <div>
+                        <strong style="color: var(--color-primary); text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">✓ Capabilities & Key Strengths Analysis</strong>
+                        <p style="margin-left: 4px;">${data.strengths_synthesis}</p>
+                    </div>
+                    <div>
+                        <strong style="color: var(--color-warning); text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">⚠️ Structural Experience & Tech Trade-offs</strong>
+                        <p style="margin-left: 4px;">${data.tradeoffs_synthesis}</p>
+                    </div>
+                    <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 14px; border-radius: 8px; margin-top: 4px;">
+                        <strong style="color: var(--color-success); text-transform: uppercase; font-size: 12px; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">🚀 Swarm Chief Recruiter Recommendation</strong>
+                        <p style="font-weight: 500;">${data.recruiter_recommendation}</p>
+                    </div>
+                `;
+                content.innerHTML = html;
+                btn.innerHTML = "✨ Re-Run AI Head-to-Head";
+                btn.disabled = false;
+
+            } catch (err) {
+                console.error(err);
+                content.innerHTML = `<span style="color: var(--color-danger); text-align: center; width: 100%;">Failed to compile AI comparison synthesis. Verify settings and API keys.</span>`;
+                btn.disabled = false;
+                btn.innerHTML = "🌀 Retry AI Analysis";
+            }
+        }
+
+        async function exportRecruitingBrief() {
+            const btn = document.getElementById('export-brief-btn');
+            const jd = document.getElementById('job-description').value;
+            const seniority = document.getElementById('seniority-level').value;
+            const sector = activeSector || 'TECH';
+
+            if (rawCandidatesPool.length === 0) {
+                alert("No ranked candidates available to export.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = "📝 Compiling Brief...";
+
+            try {
+                const res = await fetch(`${API_BASE}/api/export`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        job_description: jd,
+                        seniority_level: seniority,
+                        sector: sector,
+                        candidates: rawCandidatesPool,
+                        format: "markdown"
+                    })
+                });
+
+                if (!res.ok) throw new Error("Could not download Brief.");
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Talent_Radar_Search_Brief_${sector}.md`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+            } catch (err) {
+                console.error(err);
+                alert("Failed to export Recruiting Brief: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "📝 Export AI Brief";
+            }
+        }
+        
+        // Wrap original renderCandidates to initialize raw pool
+        const originalRenderCandidates = renderCandidates;
+        renderCandidates = function(candidates) {
+            if (candidates) {
+                candidates.forEach(c => {
+                    if (!c.id && c.candidate_id) c.id = c.candidate_id;
+                });
+            }
+            rawCandidatesPool = candidates;
+            document.getElementById('recruiter-filters-toolbar').style.display = 'flex';
+            
+            // Reset filter inputs
+            document.getElementById('filter-location').value = "";
+            document.getElementById('filter-status').value = "ALL";
+            document.getElementById('filter-min-exp').value = 0;
+            document.getElementById('filter-min-exp-val').innerText = "0";
+            
+            applyRecruiterFilters();
+        }
+        
+        // Reset compare sections when closing modal
+        const originalCloseCompareModal = closeCompareModal;
+        closeCompareModal = function() {
+            originalCloseCompareModal();
+            document.getElementById('compare-ai-synthesis-section').style.display = 'none';
+            document.getElementById('generate-compare-ai-btn').disabled = false;
+            document.getElementById('generate-compare-ai-btn').innerHTML = "✨ Run Head-to-Head AI Analysis";
+        }
+        
+        // Setup initial display
+        const originalCloseDrawer = closeDrawer;
+        closeDrawer = function() {
+            originalCloseDrawer();
+        }
+
+    </script>
+</body>
+</html>
