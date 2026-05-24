@@ -253,3 +253,113 @@ class SwarmEvaluator:
             
         print(f"[Swarm Matrix] Swarm node successfully loaded and active.")
 
+    def evaluate_fragments_batch(self, polished_requirements: str, fragments: list[str], batch_size: int = 32) -> list[float]:
+        """Evaluates candidate resume fragments in optimized GPU/CPU batches."""
+        if not fragments:
+            return [0.0]
+            
+        self.load_model()
+        scores = []
+        
+        if self.model_name != SECTOR_MODEL_MAP["DEFAULT"]:
+            # Contextual Embedding Cosine Similarity path for base models
+            def mean_pooling(model_output, attention_mask):
+                token_embeddings = model_output[0]
+                input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+                sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+                return sum_embeddings / sum_mask
+
+            # Encode query once
+            query_inputs = self.tokenizer(
+                [polished_requirements],
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=512
+            )
+            query_inputs = {k: v.to(self.device) for k, v in query_inputs.items()}
+            
+            with torch.inference_mode():
+                query_outputs = self.model(**query_inputs)
+                query_emb = mean_pooling(query_outputs, query_inputs["attention_mask"]) # Shape: [1, hidden_dim]
+
+            # Process resume fragments in batches
+            all_frag_embs = []
+            for i in range(0, len(fragments), batch_size):
+                batch_frags = fragments[i:i+batch_size]
+                
+                inputs = self.tokenizer(
+                    batch_frags,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                )
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                
+                with torch.inference_mode():
+                    outputs = self.model(**inputs)
+                    frag_embs = mean_pooling(outputs, inputs["attention_mask"]) # Shape: [batch_size, hidden_dim]
+                    all_frag_embs.append(frag_embs)
+            
+            # Stack all fragments to a single tensor
+            all_frag_embs_tensor = torch.cat(all_frag_embs, dim=0) # Shape: [len(fragments), hidden_dim]
+            
+            # Subtraction centering to mitigate pre-trained BERT anisotropy (only if there is more than 1 fragment)
+            if len(fragments) > 1:
+                mu = torch.mean(all_frag_embs_tensor, dim=0, keepdim=True) # Shape: [1, hidden_dim]
+                query_emb_centered = query_emb - mu
+                frag_embs_centered = all_frag_embs_tensor - mu
+                
+                # Normalize centered embeddings
+                q_emb_norm = torch.nn.functional.normalize(query_emb_centered, p=2, dim=1)
+                frag_embs_norm = torch.nn.functional.normalize(frag_embs_centered, p=2, dim=1)
+            else:
+                # Fallback to raw embeddings if only 1 fragment is evaluated
+                q_emb_norm = torch.nn.functional.normalize(query_emb, p=2, dim=1)
+                frag_embs_norm = torch.nn.functional.normalize(all_frag_embs_tensor, p=2, dim=1)
+                
+            with torch.inference_mode():
+                # Compute cosine similarities in one single matrix multiplication pass
+                similarities = torch.mm(q_emb_norm, frag_embs_norm.transpose(0, 1)).squeeze(0)
+                
+                if len(fragments) == 1:
+                    similarities = similarities.unsqueeze(0)
+                    
+                for sim in similarities:
+                    val = sim.item()
+                    # Cosine similarity is in [-1.0, 1.0]. Map to clean probability range [0.0, 1.0]
+                    score = (val + 1.0) / 2.0
+                    scores.append(score)
+        else:
+            # Traditional Cross-Encoder sequence classification path
+            sequences = [f"{polished_requirements} [SEP] {frag}" for frag in fragments]
+            
+            for i in range(0, len(sequences), batch_size):
+                batch_seqs = sequences[i:i+batch_size]
+                
+                inputs = self.tokenizer(
+                    batch_seqs,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                )
+                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                
+                with torch.inference_mode():
+                    outputs = self.model(**inputs)
+                    logits = outputs.logits.squeeze(-1)
+                    
+                    if len(batch_seqs) == 1:
+                        logits = logits.unsqueeze(0)
+                        
+                    for logit in logits:
+                        val = logit.item()
+                        # Sigmoid activation to yield clean float score in [0.0, 1.0]
+                        score = 1.0 / (1.0 + float(torch.exp(torch.tensor(-val)).item()))
+                        scores.append(score)
+                        
+        return scores
+
