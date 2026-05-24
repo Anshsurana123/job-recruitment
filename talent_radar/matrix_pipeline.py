@@ -363,3 +363,38 @@ class SwarmEvaluator:
                         
         return scores
 
+# ===================================================================== #
+#  Phase 5: Scoring Integration & Unified Multi-Agent Engine           #
+# ===================================================================== #
+
+class SwarmMatrixRanker:
+    def __init__(self, raw_query: str, sector: str, refined_matrix: RequirementsMatrix = None):
+        self.raw_query = raw_query
+        self.sector = sector
+        self.chunker = ResumeTextChunker()
+        self.refined_matrix = refined_matrix
+        self._gateway = None  # Lazy — only created if refined_matrix is not provided
+
+    @property
+    def gateway(self):
+        if self._gateway is None:
+            self._gateway = GeminiGateway()
+        return self._gateway
+
+    def rank_candidates(self, candidates: list[dict]) -> pd.DataFrame:
+        """E2E orchestrator: mega-batch inference across all candidates in one forward pass."""
+        t0 = time.time()
+
+        if self.refined_matrix is None:
+            print(f"[Swarm Matrix] Initiating Gemini Gateway upstream refinement...")
+            reqs = self.gateway.route_and_polish(self.raw_query, self.sector)
+        else:
+            reqs = self.refined_matrix
+
+        print(f"[Swarm Matrix] Polished requirements: '{reqs.polished_requirements}'")
+        print(f"[Swarm Matrix] Target routing sector token: '{reqs.sector_token}'")
+
+        evaluator = get_cached_evaluator(reqs.sector_token)
+
+        # PHASE 1: Chunk all resumes and build one flat fragment list
+        # Track which fragments belong to which candidate via index ranges
