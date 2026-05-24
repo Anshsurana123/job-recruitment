@@ -248,3 +248,131 @@ class CandidateScorer:
         max_v = max(velocity_raws) if velocity_raws else 1.0
         v_range = max_v - min_v
         
+        # 2. Score candidates individually
+        for cand in candidates:
+            # Score Career Velocity
+            if len(cand["career_history"]) < 2:
+                # Baseline baseline: normalized velocity_score is 0.3
+                velocity_score = 0.3
+            else:
+                raw_v = cand["velocity_raw"]
+                if v_range > 0:
+                    velocity_score = (raw_v - min_v) / v_range
+                else:
+                    velocity_score = 1.0
+                    
+            cand["career_velocity_score"] = float(velocity_score)
+            
+            # Score Profile Freshness
+            last_active = cand["last_active"]
+            if last_active is None:
+                # Guardrail: Null profile update sets freshness_score = 0.2
+                freshness_score = 0.2
+                days_since_update = 999
+            else:
+                try:
+                    active_y, active_m, active_d = map(int, last_active.split("-"))
+                    active_date = datetime.date(active_y, active_m, active_d)
+                    days_since_update = (TODAY - active_date).days
+                except Exception:
+                    days_since_update = 999
+                    
+                freshness_raw = max(0.0, 1.0 - (days_since_update / 365.0))
+                # Bonus for candidate updated in last 7 days
+                if days_since_update <= 7:
+                    freshness_raw = min(1.0, freshness_raw + 0.10)
+                freshness_score = freshness_raw
+                
+            cand["freshness_score"] = float(freshness_score)
+            
+            # Freshness label
+            if days_since_update <= 7:
+                cand["freshness_label"] = "Active Now"
+            elif days_since_update <= 60:
+                cand["freshness_label"] = "Recent"
+            else:
+                cand["freshness_label"] = "Dormant"
+                
+            # Staleness Warning
+            if days_since_update > 730:
+                cand["staleness_warning"] = "Dormant (2+ years)"
+            elif days_since_update > 365:
+                cand["staleness_warning"] = "Inactive (1+ years)"
+            else:
+                cand["staleness_warning"] = None
+                
+            # Score Semantic Depth (with Keyword Stuffer Guardrail)
+            semantic_score = cand["semantic_depth_score"] * 100
+            
+            # Guardrail: Keyword Overfitters
+            # If 20+ skills but resume text < 200 words, penalize semantic_score by 0.85
+            resume_txt_safe = cand.get("resume_text", "") or ""
+            word_count = len(resume_txt_safe.split())
+            is_stuffer = len(cand.get("skills_listed", [])) >= 20 and word_count < 200
+            
+            if is_stuffer:
+                semantic_score *= 0.85
+                cand["semantic_depth_score"] = semantic_score / 100.0
+                cand["guardrail_keyword_penalty_applied"] = True
+            else:
+                cand["guardrail_keyword_penalty_applied"] = False
+                
+            # Guardrail: Duplicate Content Detection
+            if "flags" not in cand:
+                cand["flags"] = []
+                
+            is_duplicate, ratio = detect_duplicate_content(cand["resume_text"])
+            if is_duplicate:
+                semantic_score *= (1 - ratio * 0.5)
+                cand["semantic_depth_score"] = semantic_score / 100.0
+                cand["flags"].append(f"⚠ Duplicate content detected ({ratio*100:.0f}% repeated)")
+                
+            cand["semantic_score"] = round(semantic_score, 1)
+            
+            # Scale Velocity score for display (0-10 scale)
+            cand["velocity_score"] = round(velocity_score * 10.0, 1)
+            
+            # Weighted Composite Formula:
+            composite_score = (self.semantic_weight * cand["semantic_depth_score"]) + (self.velocity_weight * cand["career_velocity_score"]) + (self.freshness_weight * cand["freshness_score"])
+            final_score = composite_score * 100
+            
+            # Score Education Bonus
+            edu_bonus = 0.0
+            edu_str = cand.get("education", "")
+            if isinstance(edu_str, str) and edu_str:
+                edu_lower = edu_str.lower()
+                
+                # Define sector-specific education keywords to ensure zero bias toward Tech in non-Tech sectors
+                SECTOR_EDU_KEYWORDS = {
+                    "TECH": ["computer science", "software engineering", "data science", "artificial intelligence", "machine learning", "information technology", "electrical engineering"],
+                    "FIN": ["finance", "economics", "accounting", "mba", "business administration", "chartered financial analyst", "financial engineering"],
+                    "HEALTH": ["medical", "medicine", "nursing", "biology", "pharmacy", "pharmacology", "biochemistry", "health studies", "clinical science"],
+                    "LEGAL": ["law", "legal", "juris doctor", "legal studies", "criminology", "paralegal studies"],
+                    "REAL": ["real estate", "property development", "urban planning", "construction management", "architecture"],
+                    "MANU": ["mechanical engineering", "industrial engineering", "manufacturing", "chemical engineering", "materials science", "systems engineering"],
+                    "COMM": ["marketing", "retail", "business administration", "commerce", "supply chain management", "mba"],
+                    "LOGI": ["logistics", "supply chain", "operations research", "transportation management", "industrial engineering"],
+                    "MEDIA": ["journalism", "media studies", "communications", "graphic design", "fine arts", "cinema", "broadcasting", "creative writing"],
+                    "ENERGY": ["petroleum engineering", "renewable energy", "electrical engineering", "environmental science", "geology", "nuclear engineering"],
+                    "EDU": ["education", "teaching", "curriculum design", "pedagogy", "educational leadership"],
+                    "GOV": ["public policy", "political science", "public administration", "international relations", "government studies"]
+                }
+                
+                relevant_keywords = SECTOR_EDU_KEYWORDS.get(self.sector, SECTOR_EDU_KEYWORDS["TECH"])
+                
+                has_special_match = False
+                if self.sector == "TECH":
+                    has_special_match = bool(re.search(r'\bcs\b', edu_lower))
+                elif self.sector == "FIN":
+                    has_special_match = bool(re.search(r'\bcfa\b|\bmba\b', edu_lower))
+                elif self.sector == "HEALTH":
+                    has_special_match = bool(re.search(r'\bmd\b|\bm\.d\.\b|\bbsn\b', edu_lower))
+                elif self.sector == "LEGAL":
+                    has_special_match = bool(re.search(r'\bjd\b|\bj\.d\.\b|\bllm\b|\bll\.m\.\b', edu_lower))
+                
+                if any(kw in edu_lower for kw in relevant_keywords) or has_special_match:
+                    edu_bonus = 5.0
+            
+            cand["education_bonus"] = edu_bonus
+            final_score = min(100.0, final_score + edu_bonus)
+            
