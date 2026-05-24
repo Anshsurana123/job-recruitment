@@ -58,3 +58,62 @@ def main():
     try:
         # Initialize pipeline
         pipeline = TalentRadarPipeline()
+        
+        # Run pipeline
+        candidates, expanded_query, timings = pipeline.run(
+            job_description=job_description,
+            seniority_level=args.seniority,
+            top_k=args.top_k
+        )
+        
+        if not candidates:
+            print("No matching candidates found.")
+            sys.exit(0)
+            
+        # Export outputs
+        csv_out_path = Path(args.out)
+        json_out_path = csv_out_path.with_suffix(".json")
+        
+        df = format_and_write_output(
+            candidates=candidates,
+            csv_path=csv_out_path,
+            json_path=json_out_path
+        )
+        
+        def clean(val):
+            if not isinstance(val, str):
+                return val
+            return val.encode('ascii', 'ignore').decode('ascii').strip()
+            
+        # Output gorgeous visual summary to console
+        print("\n" + "="*80)
+        print(f"  TOP 5 CANDIDATES MATCHED FOR {args.seniority.upper()} ROLE  ")
+        print("="*80)
+        for idx, row in df.head(5).iterrows():
+            name_clean = clean(row['name'])
+            title_clean = clean(row['current_title'])
+            status_clean = clean(row['status_label'])
+            reasoning_clean = clean(row['reasoning'])
+            
+            print(f"Rank {row['rank']}: {name_clean} ({title_clean})")
+            print(f"  - Composite Score: {row['final_score']:.1f}/100 | Semantic Score: {row['semantic_score']:.1f}/100 | Velocity: {row['velocity_score']:.1f}/10")
+            print(f"  - Freshness: {row['freshness_label']} | Status: {status_clean}")
+            print(f"  - Why: {reasoning_clean}")
+            print("-" * 80)
+            
+        print("\nPipeline execution metrics:")
+        print(f"- Step 1 Query Explosion:    {timings['query_explosion_ms']:.1f}ms")
+        print(f"- Step 2 Vector Retrieval:   {timings['vector_retrieval_ms']:.1f}ms")
+        print(f"- Step 3 Semantic Reranking: {timings['cross_encoder_rerank_ms']:.1f}ms")
+        print(f"- Step 4 Momentum Scorer:    {timings['scorer_scoring_ms']:.1f}ms")
+        print(f"- Total Pipeline E2E Time:   {timings['overall_ms']:.1f}ms")
+        print("="*80)
+        
+    except Exception as e:
+        import traceback
+        print(f"\nPipeline failure during execution: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
