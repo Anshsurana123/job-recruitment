@@ -448,3 +448,88 @@ class SwarmMatrixRanker:
 
         df = pd.DataFrame(scored_candidates)
         df = df.sort_values(by="Final Unified Score", ascending=False).reset_index(drop=True)
+        df.insert(0, "Rank", df.index + 1)
+        return df
+
+# ===================================================================== #
+#  Verification Script & Main Harness                                  #
+# ===================================================================== #
+
+if __name__ == "__main__":
+    # Robust mock profile setups representing semantic edge cases
+    candidates_pool = [
+        {
+            "candidate_id": "cand_001",
+            "name": "Profile A (The Trap - IT Infrastructure)",
+            "years_experience": 8.0,
+            "career_history": [
+                {"title": "Senior Systems Engineer", "company": "Global IT Solutions", "start_date": "2018-01-01", "end_date": "Present"}
+            ],
+            "resume_text": (
+                "IT Infrastructure and Systems Engineer with 8 years of hardware racking and switch configuration. "
+                "Familiar with setting up AI systems, ML architectures, and enterprise deployment data networks. "
+                "Responsible for physical hardware deployments, routing cables, configuring router ports, "
+                "handling client support tickets, network switches, cabling systems, server virtualization setups, "
+                "Windows support systems, desktop provisioning, security groups, Active Directory groups, and router gateways."
+            )
+        },
+        {
+            "candidate_id": "cand_002",
+            "name": "Profile B (The Hidden Gem - ML Compiler Dev)",
+            "years_experience": 3.0,
+            "career_history": [
+                {"title": "Machine Learning Engineer", "company": "DeepTech Labs", "start_date": "2023-01-01", "end_date": "Present"},
+                {"title": "Compiler Intern", "company": "Silicon Systems", "start_date": "2022-01-01", "end_date": "2023-01-01"}
+            ],
+            "resume_text": (
+                "Software systems developer focusing on deep compiler structures. "
+                "Designed and optimized flash attention matrix loops inside GPU kernels. "
+                "Quantized base model parameters to 4-bit configurations, tracking hardware-level latency drift. "
+                "Configured sparse recovery pipelines, Triton attention kernels, and low-level memory block caching "
+                "to accelerate neural net inference engines under constrained budgets."
+            )
+        },
+        {
+            "candidate_id": "cand_003",
+            "name": "Profile C (General Backend Developer)",
+            "years_experience": 5.0,
+            "career_history": [
+                {"title": "Software Engineer II", "company": "E-Commerce Corp", "start_date": "2021-01-01", "end_date": "Present"}
+            ],
+            "resume_text": (
+                "Full stack backend developer writing Python and Node.js APIs. "
+                "Maintained Django applications, PostgreSQL databases, redis caches, and REST endpoints. "
+                "Integrated payment webhooks, custom logging filters, unit tests, and CI/CD pipelines."
+            )
+        }
+    ]
+    
+    # Recruiter Input Setup: Target query & Suggested Sector
+    raw_query = "AI/ML Engineer to build and optimize local vector chunking, quantization parameters, memory footprint tracking, and flash attention mechanism optimization."
+    suggested_sector = "TECH"
+    
+    print("=" * 80)
+    print(" SWARMMATRIX AI: MULTI-AGENT SLM SWARM PIPELINE VERIFICATION ")
+    print("=" * 80)
+    
+    # Executing synchronous SwarmMatrix ranking workflow
+    try:
+        ranker = SwarmMatrixRanker(raw_query, suggested_sector)
+        results = ranker.rank_candidates(candidates_pool)
+
+        print("\n" + "=" * 80)
+        print("                        SWARMMATRIX RANKING RESULTS                      ")
+        print("=" * 80)
+        print(results.to_string(index=False))
+        print("=" * 80)
+
+        # Verify Profile B outranks Profile A (Correct contextual mapping over superficial keywords)
+        assert results.iloc[0]["Candidate ID"] == "cand_002", (
+            f"Assertion Failed! The Trap (Profile A) erroneously outranked the Hidden Gem (Profile B). "
+            f"Rank 1 was: {results.iloc[0]['Candidate Name']}"
+        )
+        print("\n[Assertion Check] Success! Profile B (The Hidden Gem) successfully outranked Profile A (The Trap).")
+        print("[Assertion Check] SwarmMatrix successfully bypassed concept dilution & aesthetic bias!")
+    except Exception as err:
+        print(f"\nVerification execution failed: {err}")
+        sys.exit(1)
