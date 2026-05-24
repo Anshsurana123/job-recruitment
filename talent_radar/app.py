@@ -298,3 +298,303 @@ async def api_upload(file: UploadFile = File(...)):
             # 2. Try pdfplumber fallback if text is empty
             if not extracted_text:
                 try:
+                    import pdfplumber
+                    pdf_file.seek(0)
+                    with pdfplumber.open(pdf_file) as pdf:
+                        for page in pdf.pages:
+                            extracted_text += page.extract_text() or ""
+                    extracted_text = extracted_text.strip()
+                    if extracted_text:
+                        print(f"[Single Ingest] pdfplumber successfully recovered text.")
+                except Exception as e:
+                    print(f"[Single Ingest] pdfplumber fallback failed: {e}")
+                    
+            # Parse candidate profile using Gemini Resume Parser
+            from talent_radar.llm_parser import GeminiResumeParser
+            parser = GeminiResumeParser()
+
+            if not extracted_text:
+                print(f"[Single Ingest] Scanned/Non-Text PDF detected. Attempting native visual PDF parsing...")
+                try:
+                    parsed_candidate = parser.parse_resume_pdf(contents, file.filename)
+                    extracted_text = parsed_candidate.get("resume_text", "")
+                except Exception as vis_err:
+                    print(f"[Single Ingest] Visual PDF parsing failed: {vis_err}")
+                    raise HTTPException(status_code=400, detail=f"The uploaded PDF has no extractable text, and visual parsing failed: {str(vis_err)}")
+            else:
+                print(f"Extracted {len(extracted_text)} characters from PDF. Sending to Gemini model {parser.model} for structured parsing...")
+                parsed_candidate = parser.parse_resume(extracted_text, file.filename)
+            
+            # Load existing candidates from pool
+            candidates_path = base_dir / "candidates.json"
+            existing_candidates = []
+            if candidates_path.exists():
+                try:
+                    with open(candidates_path, "r", encoding="utf-8") as f:
+                        existing_candidates = json.load(f)
+                except Exception:
+                    existing_candidates = []
+            
+            # Formulate new candidate and assign ID standardizing on 4-digit width
+            candidate_name = str(parsed_candidate.get("name", "Unknown Candidate")).strip()
+            name_not_extracted = bool(parsed_candidate.get("name_not_extracted", False))
+            
+            # Clean and validate career history
+            cleaned_history = []
+            for job in parsed_candidate.get("career_history", []):
+                if isinstance(job, dict):
+                    cleaned_history.append({
+                        "title": str(job.get("title", "Developer")),
+                        "company": str(job.get("company", "Company")),
+                        "start_date": str(job.get("start_date", "2020-01-01")),
+                        "end_date": job.get("end_date")
+                    })
+            
+            # Duplicate check
+            existing_cand = None
+            if candidate_name and candidate_name.lower() != "unknown candidate" and not name_not_extracted:
+                existing_cand = next((c for c in existing_candidates if c.get("name", "").strip().lower() == candidate_name.lower()), None)
+            
+            if existing_cand:
+                # Merge in-place
+                existing_cand["name_not_extracted"] = False
+                if parsed_candidate.get("current_title"):
+                    existing_cand["current_title"] = str(parsed_candidate.get("current_title"))
+                existing_cand["years_experience"] = max(
+                    float(parsed_candidate.get("years_experience", 1.0)),
+                    float(existing_cand.get("years_experience", 1.0))
+                )
+                if parsed_candidate.get("education"):
+                    existing_cand["education"] = str(parsed_candidate.get("education"))
+                if parsed_candidate.get("location"):
+                    existing_cand["location"] = str(parsed_candidate.get("location"))
+                if parsed_candidate.get("last_active"):
+                    existing_cand["last_active"] = str(parsed_candidate.get("last_active"))
+                existing_cand["resume_text"] = str(parsed_candidate.get("resume_text", extracted_text))
+                existing_cand["source_file"] = file.filename
+                
+                # Merge skills
+                skills_union = list(dict.fromkeys(
+                    [s.strip() for s in existing_cand.get("skills_listed", [])] +
+                    [s.strip() for s in parsed_candidate.get("skills_listed", [])]
+                ))
+                existing_cand["skills_listed"] = skills_union
+                
+                # Merge career history
+                history_by_key = {}
+                for job_entry in existing_cand.get("career_history", []) + cleaned_history:
+                    key = (
+                        job_entry.get("company", "").strip().lower(),
+                        job_entry.get("title", "").strip().lower(),
+                        job_entry.get("start_date", "").strip()
+                    )
+                    history_by_key[key] = job_entry
+                existing_cand["career_history"] = list(history_by_key.values())
+                
+                candidate_record = existing_cand
+                print(f"[Deduplication] Merged duplicate candidate '{candidate_name}' in-place in app.py upload.")
+            else:
+                existing_ids = {c.get("candidate_id") for c in existing_candidates}
+                max_idx = 0
+                for cid in existing_ids:
+                    if cid and cid.startswith("cand_"):
+                        try:
+                            idx_part = int(cid.split("_")[1])
+                            if idx_part > max_idx:
+                                max_idx = idx_part
+                        except (IndexError, ValueError):
+                            pass
+                next_idx = max_idx + 1
+                cand_id = f"cand_{next_idx:04d}"
+                    
+                candidate_record = {
+                    "candidate_id": cand_id,
+                    "name": candidate_name,
+                    "name_not_extracted": name_not_extracted,
+                    "current_title": str(parsed_candidate.get("current_title", "Software Engineer")),
+                    "years_experience": float(parsed_candidate.get("years_experience", 1.0)),
+                    "career_history": cleaned_history,
+                    "skills_listed": parsed_candidate.get("skills_listed", []),
+                    "last_active": parsed_candidate.get("last_active") if parsed_candidate.get("last_active") else None,
+                    "education": str(parsed_candidate.get("education", "")),
+                    "location": str(parsed_candidate.get("location", "Remote")),
+                    "resume_text": str(parsed_candidate.get("resume_text", extracted_text)),
+                    "source_file": file.filename
+                }
+                # Append new candidate to existing pool
+                existing_candidates.append(candidate_record)
+            
+            # Overwrite candidates.json with the expanded candidate pool
+            with open(candidates_path, "w", encoding="utf-8") as f:
+                json.dump(existing_candidates, f, indent=2, ensure_ascii=False)
+                
+            # Clear global pipeline cache to force reload candidate pool on next search query
+            with pipeline_lock:
+                _pipeline = None
+            
+            return {
+                "status": "success",
+                "message": f"Successfully parsed and indexed candidate '{candidate_record['name']}'.",
+                "count": len(existing_candidates),
+                "candidate": {
+                    "candidate_id": candidate_record["candidate_id"],
+                    "name": candidate_record["name"],
+                    "current_title": candidate_record["current_title"],
+                    "years_experience": candidate_record["years_experience"],
+                    "skills_listed": candidate_record["skills_listed"]
+                }
+            }
+            
+        except HTTPException as he:
+            raise he
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"PDF Ingestion Failed: {str(e)}")
+            
+    # Check if the uploaded file is a ZIP archive
+    elif filename.endswith(".zip") or file.content_type in ["application/zip", "application/x-zip-compressed"]:
+        try:
+            # Read ZIP bytes into memory
+            contents = await file.read()
+
+            if len(contents) == 0:
+                raise HTTPException(status_code=400, detail="The uploaded ZIP file is empty.")
+
+            # Create a Smart Ingest job and register it
+            job = SmartIngestJob()
+            with jobs_lock:
+                _active_jobs[job.job_id] = job
+
+            # Define the background worker function
+            def _run_ingest_background(zip_bytes: bytes, ingest_job: SmartIngestJob):
+                global _pipeline
+                try:
+                    run_smart_ingest(zip_bytes, ingest_job)
+                finally:
+                    # Clear pipeline cache thread-safely
+                    with pipeline_lock:
+                        _pipeline = None
+
+            # Launch in a background thread (not blocking the HTTP response)
+            ingest_thread = threading.Thread(
+                target=_run_ingest_background,
+                args=(contents, job),
+                daemon=True,
+            )
+            ingest_thread.start()
+
+            # Return immediately with HTTP 202 Accepted
+            return {
+                "status": "accepted",
+                "job_id": job.job_id,
+                "message": f"Smart ingest started for '{file.filename}'. "
+                           f"Stream progress at /api/upload/progress/{job.job_id}",
+            }
+
+        except HTTPException as he:
+            raise he
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"ZIP Ingestion Failed: {str(e)}")
+            
+    # Process standard JSON dataset upload
+    else:
+        try:
+            contents = await file.read()
+            data = json.loads(contents.decode("utf-8"))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid file format: {str(e)}. Must be a valid JSON file.")
+            
+        if not isinstance(data, list):
+            raise HTTPException(status_code=400, detail="Invalid data format. Dataset must be a JSON array (list of candidates).")
+            
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded dataset is empty.")
+            
+        validated_candidates = []
+        required_keys = ["candidate_id", "name", "current_title", "resume_text"]
+        
+        for idx, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=400, detail=f"Candidate at index {idx} must be an object.")
+                
+            for key in required_keys:
+                if key not in item:
+                    raise HTTPException(status_code=400, detail=f"Candidate at index {idx} is missing required field '{key}'.")
+                    
+            candidate_id = str(item["candidate_id"])
+            name = str(item["name"])
+            current_title = str(item["current_title"])
+            resume_text = str(item["resume_text"])
+            
+            years_experience = float(item.get("years_experience", 1.0))
+            skills_listed = item.get("skills_listed", [])
+            if not isinstance(skills_listed, list):
+                skills_listed = [str(skills_listed)]
+            skills_listed = [str(s) for s in skills_listed]
+            
+            career_history = item.get("career_history", [])
+            if not isinstance(career_history, list):
+                career_history = []
+            cleaned_history = []
+            for job in career_history:
+                if isinstance(job, dict):
+                    cleaned_history.append({
+                        "title": str(job.get("title", "Developer")),
+                        "company": str(job.get("company", "Company")),
+                        "start_date": str(job.get("start_date", "2020-01-01")),
+                        "end_date": job.get("end_date")
+                    })
+            
+            last_active = item.get("last_active")
+            if last_active is not None:
+                last_active = str(last_active)
+                
+            validated_candidates.append({
+                "candidate_id": candidate_id,
+                "name": name,
+                "current_title": current_title,
+                "resume_text": resume_text,
+                "years_experience": years_experience,
+                "career_history": cleaned_history,
+                "skills_listed": skills_listed,
+                "last_active": last_active
+            })
+            
+        candidates_path = base_dir / "candidates.json"
+        try:
+            with open(candidates_path, "w", encoding="utf-8") as f:
+                json.dump(validated_candidates, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to save dataset: {str(e)}")
+            
+        with pipeline_lock:
+            _pipeline = None
+            
+        return {
+            "status": "success",
+            "message": f"Successfully uploaded and indexed {len(validated_candidates)} candidates.",
+            "count": len(validated_candidates)
+        }
+
+@app.delete("/api/upload")
+def api_delete_dataset():
+    """Deletes the active custom candidate dataset and restores the pool to an empty clean slate (0 candidates)."""
+    global _pipeline
+    try:
+        print("Restoring candidate pool to a clean slate (0 candidates)...")
+        candidates_path = base_dir / "candidates.json"
+        with open(candidates_path, "w", encoding="utf-8") as f:
+            json.dump([], f, indent=2, ensure_ascii=False)
+            
+        with pipeline_lock:
+            _pipeline = None
+        
+        return {
+            "status": "success",
+            "message": "Successfully cleared custom dataset and restored database back to 0 candidates (clean slate).",
+            "count": 0
+        }
+    except Exception as e:
