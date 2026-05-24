@@ -376,3 +376,132 @@ class CandidateScorer:
             cand["education_bonus"] = edu_bonus
             final_score = min(100.0, final_score + edu_bonus)
             
+            # Guardrail: Seniority Mismatch
+            # If JD seniority is Senior+ and candidate has < 2 years experience, cap final_score at 65/100
+            is_seniority_mismatch = self.seniority_level in ["Senior", "Lead", "Principal"] and cand["years_experience"] < 2.0
+            
+            if is_seniority_mismatch:
+                final_score = min(65.0, final_score)
+                cand["guardrail_seniority_cap_applied"] = True
+            else:
+                cand["guardrail_seniority_cap_applied"] = False
+                
+            cand["final_score"] = round(final_score, 1)
+            
+            # Status Label Assignment
+            if cand["final_score"] >= 72 and cand["velocity_score"] >= 3.0:
+                cand["status_label"] = "Top Hidden Gem 🚀"
+            elif cand["final_score"] >= 65:
+                cand["status_label"] = "Solid Match 🏆"
+            elif cand["final_score"] >= 55:
+                cand["status_label"] = "Potential Fit ⭐"
+            else:
+                cand["status_label"] = "Longshot"
+                
+            # Perform Backend Skills Gap Matching
+            matched_skills = []
+            missing_skills = []
+            if self.target_keywords:
+                cand_skills_lower = [s.lower().strip() for s in cand.get("skills_listed", [])]
+                for kw in self.target_keywords:
+                    kw_clean = kw.strip()
+                    kw_lower = kw_clean.lower()
+                    matched = False
+                    for cs in cand_skills_lower:
+                        if kw_lower == cs or (len(kw_lower) > 3 and (kw_lower in cs or cs in kw_lower)):
+                            matched = True
+                            if cs not in matched_skills:
+                                # Keep display case
+                                matched_skills.append(kw_clean)
+                            break
+                    if not matched:
+                        if kw_clean not in missing_skills:
+                            missing_skills.append(kw_clean)
+                            
+            cand["matched_skills"] = matched_skills
+            cand["missing_skills"] = missing_skills
+
+            # Formulate human-readable reasoning
+            cand["reasoning"] = generate_reasoning_sentence(cand, is_stuffer, is_seniority_mismatch, self.target_keywords, self.sector)
+            
+        # 3. Tie-breaking Sorting
+        # Sort descending using cmp_to_key. Ranks higher profile_freshness first if final scores are within 0.5
+        def compare_candidates(c1, c2):
+            diff = c1["final_score"] - c2["final_score"]
+            if abs(diff) <= 0.5:
+                # Rank higher freshness_score first (descending)
+                f_diff = c1["freshness_score"] - c2["freshness_score"]
+                if f_diff > 0:
+                    return -1 # c1 comes before c2
+                elif f_diff < 0:
+                    return 1  # c2 comes before c1
+            # Standard final score sort (descending)
+            if diff > 0:
+                return -1
+            elif diff < 0:
+                return 1
+            return 0
+            
+        sorted_candidates = sorted(candidates, key=cmp_to_key(compare_candidates))
+        
+        # Add a debug print after scoring 5 candidates
+        print("\n--- DEBUG COMPOSITE SCORE SAMPLE (TOP 5) ---")
+        for c in sorted_candidates[:5]:
+            print(f"Name: {c['name']} | Semantic: {c['semantic_depth_score']:.4f} | Velocity: {c['career_velocity_score']:.4f} | Freshness: {c['freshness_score']:.4f} | Composite: {c['final_score']/100:.4f} | Final: {c['final_score']}")
+            
+        return sorted_candidates
+ 
+def generate_reasoning_sentence(cand, is_stuffer, is_seniority_mismatch, target_keywords=None, sector="TECH"):
+    name = cand["name"]
+    title = cand["current_title"]
+    skills_count = len(cand["skills_listed"])
+    
+    is_dormant_high_scorer = cand.get("semantic_score", 0.0) >= 85.0 and cand.get("freshness_label") == "Dormant"
+    
+    history = cand.get("career_history", [])
+    if history:
+        earliest_role = history[-1].get("title", "Junior Role")
+        experience = cand.get("years_experience", 0.0)
+        trajectory_str = f"Progressed from {earliest_role} to {title} over {experience} years."
+    else:
+        trajectory_str = f"Demonstrates {cand.get('years_experience', 0.0)} years of experience as {title}."
+
+    matched_skills = cand.get("matched_skills", [])
+    if matched_skills:
+        skills_str = f" Aligned with core requirements in {', '.join(matched_skills[:3])}."
+    else:
+        skills_str = ""
+
+    # Map dynamic sector terminology to ensure no tech bias
+    sector = sector.upper().strip() if sector else "TECH"
+    if sector == "TECH":
+        sector_fit = "technical fit"
+        leader_profile = "tech lead profile"
+    elif sector == "FIN":
+        sector_fit = "financial fit"
+        leader_profile = "finance leader profile"
+    elif sector == "HEALTH":
+        sector_fit = "healthcare fit"
+        leader_profile = "healthcare leader profile"
+    elif sector == "LEGAL":
+        sector_fit = "legal fit"
+        leader_profile = "legal professional profile"
+    else:
+        sector_fit = "domain fit"
+        leader_profile = "industry leader profile"
+
+    if is_seniority_mismatch:
+        return f"{name} presents {cand['years_experience']} years of experience for a senior role; capped at 65 due to lack of deep background."
+    elif is_stuffer:
+        return f"{name} lists a dense skill set ({skills_count} skills) with a very brief resume text; penalized for potential keyword stuffing."
+    elif is_dormant_high_scorer:
+        return f"Exceptional {sector_fit} ({cand.get('semantic_score', 0.0)}% semantic match) — but profile dormant. High skill match, low active intent signal."
+    elif cand["final_score"] >= 72 and cand.get("velocity_score", 0.0) >= 3.0:
+        return f"Elite candidate showing exceptional career velocity. {trajectory_str}{skills_str} High-caliber {leader_profile}."
+    elif cand["final_score"] >= 65:
+        return f"Strong matching profile. {trajectory_str}{skills_str} Steady career progression and solid competence."
+    elif cand["final_score"] >= 55:
+        return f"Satisfactory skills align with core stack, though profile freshness or experience velocity remains moderate.{skills_str}"
+    else:
+        return f"Insufficient contextual relevance or dormant profile activity makes this candidate a low-priority match."
+
