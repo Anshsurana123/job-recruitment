@@ -925,10 +925,8 @@ def api_candidate_outreach(candidate_id: str, request: OutreachRequest):
             4. Do not include placeholders like "[Your Name]". Write the email as a senior recruiter from "SwarmMatrix executive search".
             """
             
-            raw_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
-            clean_model = raw_model.strip().strip("'").strip('"').replace("models/", "")
             response = client.models.generate_content(
-                model=clean_model,
+                model="gemini-3.1-flash-lite",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction="You are a premium headhunter and tech recruiter known for writing high-conversion outreach emails.",

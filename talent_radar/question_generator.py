@@ -25,8 +25,7 @@ class PhoneScreenGuide(BaseModel):
 class TechnicalQuestionGenerator:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
-        raw_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
-        self.model_name = raw_model.strip().strip("'").strip('"').replace("models/", "")
+        self.model_name = "gemini-3.1-flash-lite"
         self._client = None
 
     @property

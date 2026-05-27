@@ -118,8 +118,7 @@ def extract_name_from_filename(filename: str) -> str:
 class GeminiResumeParser:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
-        raw_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
-        self.model = raw_model.strip().strip("'").strip('"').replace("models/", "")
+        self.model = "gemini-3.1-flash-lite"
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY is not set in the environment or .env file.")
         self._url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"

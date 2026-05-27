@@ -129,10 +129,8 @@ def expand_query(job_description, seniority_level="Senior"):
             print("Using official Google GenAI SDK for query expansion...")
             client = genai.Client(api_key=gemini_key)
             prompt = get_llm_prompt(job_description, seniority_level)
-            raw_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
-            clean_model = raw_model.strip().strip("'").strip('"').replace("models/", "")
             response = client.models.generate_content(
-                model=clean_model,
+                model="gemini-3.1-flash-lite",
                 contents=prompt
             )
             return response.text.strip()
