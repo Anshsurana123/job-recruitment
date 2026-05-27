@@ -39,7 +39,8 @@ class GeminiGateway:
         # Instantiate official Google GenAI SDK client
         from google import genai
         self.client = genai.Client(api_key=self.api_key)
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        raw_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        self.model_name = raw_model.strip().strip("'").strip('"').replace("models/", "")
 
     def route_and_polish(self, raw_query: str, raw_sector: str) -> RequirementsMatrix:
         """Uses gemini-3.1-flash-lite with structured output to refine search query and identify industry sector."""
