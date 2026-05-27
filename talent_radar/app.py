@@ -352,7 +352,11 @@ async def api_upload(file: UploadFile = File(...)):
             
             # Duplicate check
             existing_cand = None
-            if candidate_name and candidate_name.lower() != "unknown candidate" and not name_not_extracted:
+            is_generic_name = candidate_name.lower().strip() in {
+                "not specified", "unknown", "n/a", "none", "unknown candidate", "null", 
+                "not specified.", "not-specified", "unspecified", "name", "candidate name", "n.a."
+            }
+            if candidate_name and not is_generic_name and not name_not_extracted:
                 existing_cand = next((c for c in existing_candidates if c.get("name", "").strip().lower() == candidate_name.lower()), None)
             
             if existing_cand:

@@ -104,7 +104,11 @@ def _extract_pdfs_from_zip(zip_bytes: bytes) -> list[tuple[str, str, bytes]]:
                 
         print(f"[Smart Ingest Debug] Found {len(pdf_names)} matching PDF file paths in ZIP archive.")
 
-        for pdf_name in pdf_names:
+        total_pdfs = len(pdf_names)
+        print(f"[Smart Ingest Debug] Starting sequential text extraction for {total_pdfs} PDF files...")
+        for i, pdf_name in enumerate(pdf_names, 1):
+            if i % 5 == 0 or i == 1 or i == total_pdfs:
+                print(f"[Smart Ingest Debug] [{i}/{total_pdfs}] Extracting text from '{pdf_name}'...")
             try:
                 pdf_bytes = z.read(pdf_name)
                 
@@ -383,7 +387,11 @@ def _build_candidate_record(
 
     # Thread-safe duplicate check
     with job._lock:
-        if candidate_name and candidate_name.lower() != "unknown candidate" and not name_not_extracted:
+        is_generic_name = candidate_name.lower().strip() in {
+            "not specified", "unknown", "n/a", "none", "unknown candidate", "null", 
+            "not specified.", "not-specified", "unspecified", "name", "candidate name", "n.a."
+        }
+        if candidate_name and not is_generic_name and not name_not_extracted:
             existing_cand = next((c for c in existing_candidates if c.get("name", "").strip().lower() == candidate_name.lower()), None)
             if existing_cand:
                 # Merge in-place
