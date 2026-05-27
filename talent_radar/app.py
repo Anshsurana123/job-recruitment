@@ -926,7 +926,7 @@ def api_candidate_outreach(candidate_id: str, request: OutreachRequest):
             """
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction="You are a premium headhunter and tech recruiter known for writing high-conversion outreach emails.",

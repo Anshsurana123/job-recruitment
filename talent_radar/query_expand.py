@@ -130,7 +130,7 @@ def expand_query(job_description, seniority_level="Senior"):
             client = genai.Client(api_key=gemini_key)
             prompt = get_llm_prompt(job_description, seniority_level)
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
                 contents=prompt
             )
             return response.text.strip()
