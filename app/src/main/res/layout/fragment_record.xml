@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://tools.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <!-- Top Header -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clHeader"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:elevation="2dp"
+        android:padding="16dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvAppName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SalesVoice"
+            android:textColor="@color/text_primary"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <TextView
+            android:id="@+id/tvTodayDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sunday, 1 June 2026"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvAppName" />
+
+        <TextView
+            android:id="@+id/badgeSalesCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/badge_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="2dp"
+            android:text="@string/record_sales_zero"
+            android:textColor="@color/primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@id/tvAppName"
+            app:layout_constraintStart_toEndOf="@id/tvAppName"
+            app:layout_constraintTop_toTopOf="@id/tvAppName" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/settings"
+            android:padding="8dp"
+            android:src="@drawable/ic_settings"
+            app:tint="@color/text_secondary"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Empty Catalog Warning Banner -->
+    <TextView
+        android:id="@+id/tvWarningBanner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#FEF3C7"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="@string/record_warning_no_products"
+        android:textColor="#D97706"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/clHeader" />
+
+    <!-- Center Section for Speech Recording -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/clVoiceSection"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:paddingVertical="24dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvWarningBanner">
+
+        <!-- Pulsing Rings (Animated via Scale & Alpha) -->
+        <View
+            android:id="@+id/viewPulse1"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:background="@drawable/pulsing_ring"
+            android:visibility="invisible"
+            app:layout_constraintBottom_toBottomOf="@id/btnMic"
+            app:layout_constraintEnd_toEndOf="@id/btnMic"
+            app:layout_constraintStart_toStartOf="@id/btnMic"
+            app:layout_constraintTop_toTopOf="@id/btnMic" />
+
+        <View
+            android:id="@+id/viewPulse2"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:background="@drawable/pulsing_ring"
+            android:visibility="invisible"
+            app:layout_constraintBottom_toBottomOf="@id/btnMic"
+            app:layout_constraintEnd_toEndOf="@id/btnMic"
+            app:layout_constraintStart_toStartOf="@id/btnMic"
+            app:layout_constraintTop_toTopOf="@id/btnMic" />
+
+        <!-- Microphone Button -->
+        <ImageButton
+            android:id="@+id/btnMic"
+            android:layout_width="110dp"
+            android:layout_height="110dp"
+            android:background="@drawable/circle_background"
+            android:contentDescription="@string/record_hold_to_speak"
+            android:elevation="6dp"
+            android:padding="28dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_mic"
+            app:tint="@color/surface"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- Progress Spinner (Processing state) -->
+        <ProgressBar
+            android:id="@+id/pbProcessing"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:elevation="8dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/primary"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/btnMic"
+            app:layout_constraintEnd_toEndOf="@id/btnMic"
+            app:layout_constraintStart_toStartOf="@id/btnMic"
+            app:layout_constraintTop_toTopOf="@id/btnMic" />
+
+        <TextView
+            android:id="@+id/tvMicStatusLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/record_hold_to_speak"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/btnMic" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- Feedback Card (Floating Success/Error Indicator) -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cvFeedbackCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="24dp"
+        android:visibility="gone"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        app:strokeWidth="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/clVoiceSection"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:id="@+id/llFeedbackContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/tvFeedbackTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Sale Logged Successfully"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp" />
+
+            <TextView
+                android:id="@+id/tvFeedbackDetail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Rice: 2 kg -> ₹240 (Profit: ₹40)"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Sales Log Recycler List -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvSalesLog"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingTop="8dp"
+        android:paddingBottom="72dp"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+        app:layout_constraintBottom_toTopOf="@id/llBottomTotals"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cvFeedbackCard"
+        tools:listitem="@layout/item_sale_log" />
+
+    <!-- Empty Sales Log State -->
+    <TextView
+        android:id="@+id/tvEmptyLogState"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="32dp"
+        android:gravity="center"
+        android:text="@string/record_empty_log"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/llBottomTotals"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/clVoiceSection" />
+
+    <!-- Sticky Aggregates Bottom Bar -->
+    <LinearLayout
+        android:id="@+id/llBottomTotals"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:elevation="8dp"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <TextView
+            android:id="@+id/tvTotalRevenue"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Total: ₹0.00"
+            android:textColor="@color/primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvTotalProfit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Profit: ₹0.00"
+            android:textColor="@color/success"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

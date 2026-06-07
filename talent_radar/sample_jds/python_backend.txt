@@ -1,0 +1,13 @@
+Job Title: Senior Backend Software Engineer (Python/Go)
+Seniority Level: Senior
+Required Skills: Python, Node.js, Go, FastAPI, PostgreSQL, Redis, gRPC, Docker, REST APIs
+Nice to Have: Kafka, RabbitMQ, Elasticsearch, distributed systems
+
+We are looking for a Senior Backend Software Engineer to design, scale, and optimize our distributed backend APIs. 
+You will be responsible for resolving complex scalability problems, preventing connection pool exhaustions, implementing read replicas, and caching layer optimizations. 
+We build resilient microservices and utilize event-driven communication to process millions of requests daily.
+
+Key Responsibilities:
+- Architect highly concurrent API services in Python/FastAPI or Go.
+- Conduct database performance tuning, indexing, and schema migrations.
+- Build resilient caching infrastructures using Redis.

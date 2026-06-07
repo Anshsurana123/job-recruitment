@@ -1,0 +1,335 @@
+import os
+import sys
+import io
+import torch
+import threading
+from PIL import Image
+import fitz  # PyMuPDF
+
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
+class LocalOCREngine:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super(LocalOCREngine, cls).__new__(cls, *args, **kwargs)
+                cls._instance._initialized = False
+            return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self.backend = os.getenv("LOCAL_OCR_BACKEND", "qwen2.5-vl").lower()
+        self._model = None
+        self._processor = None
+        self._model_lock = threading.Lock()
+        
+        # Configure worker counts
+        self.easyocr_workers = int(os.getenv("LOCAL_OCR_EASYOCR_WORKERS", "4"))
+        self.qwen_workers = int(os.getenv("LOCAL_OCR_QWEN_WORKERS", "1"))
+        
+        # Configure min/max patches to limit pixel count and speed up CPU inference
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        default_max_patches = "1280" if device == "cuda" else "512"
+        self.qwen_min_patches = int(os.getenv("LOCAL_OCR_QWEN_MIN_PATCHES", "256"))
+        self.qwen_max_patches = int(os.getenv("LOCAL_OCR_QWEN_MAX_PATCHES", default_max_patches))
+        
+        self._initialized = True
+
+    def _init_qwen(self):
+        with self._model_lock:
+            if self._model is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                print(f"[Local OCR] Loading Qwen2-VL-2B-Instruct vision model and processor (Device: {device})...", flush=True)
+                from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+                
+                # Dynamic CPU optimization: set PyTorch thread pool size to prevent thrashing
+                if device == "cpu":
+                    torch_threads = int(os.getenv("TORCH_CPU_THREADS", "4"))
+                    torch.set_num_threads(torch_threads)
+                    print(f"[Local OCR] Optimizing PyTorch CPU threads: set to {torch_threads} to prevent core thrashing.", flush=True)
+                
+                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+                
+                # Load the model with SDPA attention (highly vectorized and fast on both GPU and CPU)
+                # Omit device_map="auto" on CPU to prevent accelerate hook overhead
+                if device == "cuda":
+                    self._model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        "Qwen/Qwen2-VL-2B-Instruct",
+                        torch_dtype=dtype,
+                        device_map="auto",
+                        attn_implementation="sdpa"
+                    )
+                else:
+                    self._model = Qwen2VLForConditionalGeneration.from_pretrained(
+                        "Qwen/Qwen2-VL-2B-Instruct",
+                        torch_dtype=dtype,
+                        attn_implementation="sdpa"
+                    ).to("cpu")
+                    
+                self._processor = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-2B-Instruct")
+                print(f"[Local OCR] Qwen2-VL-2B-Instruct vision model loaded successfully on device: {device}", flush=True)
+                print(f"[Local OCR] Configured Qwen dynamic pixel range: min={self.qwen_min_patches * 28 * 28} ({self.qwen_min_patches} patches), max={self.qwen_max_patches * 28 * 28} ({self.qwen_max_patches} patches)", flush=True)
+                print(f"[Local OCR] Configured Qwen ThreadPool workers: {self.qwen_workers}", flush=True)
+
+    def _init_easyocr(self):
+        with self._model_lock:
+            if self._model is None:
+                gpu_avail = torch.cuda.is_available()
+                print(f"[Local OCR] Loading EasyOCR English reader (GPU Available: {gpu_avail})...", flush=True)
+                import easyocr
+                self._model = easyocr.Reader(['en'], gpu=gpu_avail)
+                print(f"[Local OCR] EasyOCR English reader loaded successfully. Parallel workers: {self.easyocr_workers}", flush=True)
+
+    def _process_page_qwen(self, page_idx: int, img_bytes: bytes, total_pages: int) -> tuple[int, str]:
+        """
+        Processes a single page visually via Qwen2-VL.
+        This operation is executed inside a ThreadPoolExecutor.
+        """
+        from qwen_vl_utils import process_vision_info
+        
+        image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        
+        prompt = (
+            "You are an expert OCR engine. Extract all text and structure from this resume page accurately. "
+            "Output the content in clean, structured Markdown format. Preserve the visual column layout and "
+            "reading order perfectly. Do not add any preamble, conversational introductions, or explanations. "
+            "Output ONLY the markdown representation of the document."
+        )
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image", 
+                        "image": image,
+                        "min_pixels": self.qwen_min_patches * 28 * 28,
+                        "max_pixels": self.qwen_max_patches * 28 * 28
+                    },
+                    {"type": "text", "text": prompt}
+                ]
+            }
+        ]
+        
+        # Prepare vision inputs (this processing is thread-safe)
+        text = self._processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        
+        inputs = self._processor(
+            text=[text],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt"
+        )
+        
+        # Move to target model device
+        inputs = inputs.to(self._model.device)
+        
+        print(f"      - Page {page_idx + 1}/{total_pages}: Running local Qwen2-VL vision model inference (min_patches={self.qwen_min_patches}, max_patches={self.qwen_max_patches})...", flush=True)
+        
+        with torch.no_grad():
+            generated_ids = self._model.generate(**inputs, max_new_tokens=2048)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self._processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+            
+        print(f"      - Page {page_idx + 1}/{total_pages} vision extraction complete.", flush=True)
+        return page_idx, output_text.strip()
+
+    def extract_text_qwen(self, pdf_bytes: bytes) -> str:
+        """
+        Extracts structured text locally from a scanned PDF page-by-page
+        using the Qwen2-VL visual model (rendered via PyMuPDF).
+        Can process pages concurrently using a thread pool if LOCAL_OCR_QWEN_WORKERS > 1.
+        """
+        self._init_qwen()
+        
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        total_pages = len(doc)
+        
+        print(f"[Local OCR] Processing scanned PDF visually using Qwen2-VL-2B-Instruct ({total_pages} pages)...", flush=True)
+        
+        tasks = []
+        for page_idx in range(total_pages):
+            page = doc[page_idx]
+            # Render page as PNG in memory (150 DPI is balanced for quality and speed)
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            tasks.append((page_idx, img_bytes))
+            
+        # Determine number of concurrent worker threads
+        max_workers = min(total_pages, self.qwen_workers)
+        
+        full_text_parts = [None] * total_pages
+        
+        if max_workers > 1:
+            print(f"[Local OCR] Parallelizing page processing using ThreadPoolExecutor with {max_workers} workers...", flush=True)
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._process_page_qwen, idx, img_bytes, total_pages): idx
+                    for idx, img_bytes in tasks
+                }
+                for future in futures:
+                    idx, page_text = future.result()
+                    full_text_parts[idx] = page_text
+        else:
+            print(f"[Local OCR] Processing pages sequentially (workers=1 to conserve memory/CPU threads)...", flush=True)
+            for idx, img_bytes in tasks:
+                _, page_text = self._process_page_qwen(idx, img_bytes, total_pages)
+                full_text_parts[idx] = page_text
+                
+        return "\n\n--- PAGE BREAK ---\n\n".join(full_text_parts)
+
+    def _process_page_easyocr(self, page_idx: int, img_bytes: bytes, width: int) -> tuple[int, str]:
+        """Processes a single page visually via EasyOCR."""
+        results = self._model.readtext(img_bytes)
+        
+        W = width
+        left_col = []
+        right_col = []
+        crossing_boxes = 0
+        
+        # Classify bounding boxes
+        for bbox, text, conf in results:
+            x_coords = [p[0] for p in bbox]
+            y_coords = [p[1] for p in bbox]
+            
+            x_min, x_max = min(x_coords), max(x_coords)
+            y_min = min(y_coords)
+            x_center = sum(x_coords) / 4.0
+            
+            # Check if text spans across the vertical center line
+            is_crossing = (x_min < 0.4 * W) and (x_max > 0.6 * W)
+            if is_crossing:
+                crossing_boxes += 1
+            
+            box_info = {"bbox": bbox, "text": text, "x_center": x_center, "y_min": y_min, "x_min": x_min}
+            
+            if x_center < 0.5 * W:
+                left_col.append(box_info)
+            else:
+                right_col.append(box_info)
+                
+        # 2-column or 1-column layout heuristical decision
+        total_boxes = len(results)
+        is_two_column = False
+        if total_boxes > 0:
+            crossing_ratio = crossing_boxes / total_boxes
+            if crossing_ratio < 0.15:
+                is_two_column = True
+                
+        if is_two_column:
+            # Group and sort left and right columns vertically (top to bottom)
+            left_col.sort(key=lambda b: b["y_min"])
+            right_col.sort(key=lambda b: b["y_min"])
+            
+            left_text = "\n".join([b["text"] for b in left_col])
+            right_text = "\n".join([b["text"] for b in right_col])
+            page_text = f"{left_text}\n\n{right_text}"
+        else:
+            # 1-column page: Sort all vertically, grouping boxes on same line (within 10 pixels)
+            all_boxes = []
+            for bbox, text, conf in results:
+                y_coords = [p[1] for p in bbox]
+                x_coords = [p[0] for p in bbox]
+                all_boxes.append({
+                    "text": text,
+                    "y_min": min(y_coords),
+                    "x_min": min(x_coords)
+                })
+            all_boxes.sort(key=lambda b: b["y_min"])
+            
+            lines = []
+            current_line = []
+            current_y = None
+            
+            for box in all_boxes:
+                if current_y is None:
+                    current_y = box["y_min"]
+                    current_line.append(box)
+                elif abs(box["y_min"] - current_y) < 10:
+                    current_line.append(box)
+                else:
+                    current_line.sort(key=lambda b: b["x_min"])
+                    lines.append(" ".join([b["text"] for b in current_line]))
+                    current_line = [box]
+                    current_y = box["y_min"]
+                    
+            if current_line:
+                current_line.sort(key=lambda b: b["x_min"])
+                lines.append(" ".join([b["text"] for b in current_line]))
+                
+            page_text = "\n".join(lines)
+            
+        print(f"      - Page {page_idx + 1} layout OCR complete.", flush=True)
+        return page_idx, page_text.strip()
+
+    def extract_text_easyocr(self, pdf_bytes: bytes) -> str:
+        """
+        Extracts structured text locally from a scanned PDF page-by-page
+        concurrently using a layout-aware bounding-box grouping algorithm over EasyOCR.
+        """
+        self._init_easyocr()
+        
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        
+        print(f"[Local OCR] Processing scanned PDF via parallel EasyOCR layout engine ({len(doc)} pages)...", flush=True)
+        
+        tasks = []
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
+            tasks.append((page_idx, img_bytes, pix.width))
+            
+        from concurrent.futures import ThreadPoolExecutor
+        full_text_parts = [None] * len(doc)
+        
+        max_workers = min(len(doc), self.easyocr_workers)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(self._process_page_easyocr, idx, img_bytes, width): idx
+                for idx, img_bytes, width in tasks
+            }
+            for future in futures:
+                idx, page_text = future.result()
+                full_text_parts[idx] = page_text
+                
+        return "\n\n--- PAGE BREAK ---\n\n".join(full_text_parts)
+
+
+    def extract_text(self, pdf_bytes: bytes) -> str:
+        """
+        Primary engine interface. Attempts Qwen2-VL vision OCR extraction
+        and cascades to EasyOCR fallback on GPU out-of-memory or model failures.
+        """
+        # Re-check backend setting in case it changed dynamically
+        self.backend = os.getenv("LOCAL_OCR_BACKEND", "qwen2.5-vl").lower()
+        
+        if self.backend == "qwen2.5-vl":
+            try:
+                return self.extract_text_qwen(pdf_bytes)
+            except Exception as e:
+                print(f"[Local OCR Fallback] Local vision Qwen model failed: {e}. Cascading to EasyOCR...", flush=True)
+                # Cleanup model reference to free VRAM before reloading EasyOCR
+                with self._model_lock:
+                    self._model = None
+                    self._processor = None
+                return self.extract_text_easyocr(pdf_bytes)
+        else:
+            return self.extract_text_easyocr(pdf_bytes)

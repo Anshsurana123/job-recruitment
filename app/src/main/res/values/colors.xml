@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#4F46E5</color> <!-- Premium Indigo -->
+    <color name="primary_dark">#3730A3</color>
+    <color name="primary_light">#E0E7FF</color>
+    <color name="accent">#06B6D4</color> <!-- Sleek Cyan -->
+    <color name="success">#10B981</color> <!-- Vibrant Green -->
+    <color name="success_light">#D1FAE5</color>
+    <color name="error">#EF4444</color> <!-- Vibrant Red -->
+    <color name="error_light">#FEE2E2</color>
+    
+    <color name="background">#F8FAFC</color> <!-- Slate Light Background -->
+    <color name="surface">#FFFFFF</color>
+    <color name="card_border">#E2E8F0</color>
+    
+    <color name="text_primary">#0F172A</color> <!-- Premium Slate Black -->
+    <color name="text_secondary">#64748B</color> <!-- Muted Slate -->
+    <color name="text_light">#94A3B8</color>
+    
+    <!-- Report colors -->
+    <color name="accent_blue">#0EA5E9</color> <!-- Sky Blue -->
+    <color name="accent_blue_light">#E0F2FE</color>
+    <color name="accent_grey">#64748B</color>
+    <color name="accent_grey_light">#F1F5F9</color>
+</resources>

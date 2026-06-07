@@ -1,0 +1,11 @@
+# Core Ranking Dependencies
+pandas
+numpy
+python-dotenv
+requests
+
+# Core Web Framework (if needed for endpoints)
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic

@@ -1,0 +1,13 @@
+Job Title: Senior React Frontend Engineer
+Seniority Level: Senior
+Required Skills: React, TypeScript, Next.js, Redux, TailwindCSS, Webpack, Jest
+Nice to Have: WebAssembly, Svelte, Cypress, performance optimizations
+
+We are looking for a Senior Frontend Engineer to own the architecture and deployment of our high-volume dashboards. 
+The ideal candidate is deeply passionate about performance and rendering efficiency, specifically targeting Web Vitals and eliminating layout shifts. 
+You will be expected to design modern React interfaces, migrate legacy frameworks to clean TypeScript, and optimize rendering strategies using micro-frontends or module federation. 
+
+Key Responsibilities:
+- Design and build highly interactive React interfaces under tight deadlines.
+- Improve our Core Web Vitals, specifically LCP and hydration costs.
+- Mentor junior engineers and set UI coding standards across the department.

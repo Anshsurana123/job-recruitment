@@ -1,0 +1,75 @@
+# Redrob Hackathon — Submission Metadata
+#
+# Filled in matching portal requirements.
+
+# ============================================================================
+# Team identity
+# ============================================================================
+team_name: "proud-franklin"  # Used in leaderboard and announcements
+
+primary_contact:
+  name: "Proud Franklin Team Lead"
+  email: "ml-engineer@example.com"   # Used for all organizer communication
+  phone: "+91-9999999999"        # Used for outreach
+
+team_members:
+  - name: "Proud Franklin Member"
+    email: "ml-engineer@example.com"
+    role: "ML Systems Engineer"
+
+# ============================================================================
+# Code and reproducibility
+# ============================================================================
+github_repo: "https://github.com/Anshsurana123/job-recruitment"
+# Required. Must be reachable.
+sandbox_link: "https://huggingface.co/spaces/Anshsurana123/job-recruitment"
+# Required. A working hosted environment where the ranker can be run on a small candidate sample.
+
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv"
+# The single command that produces submission.csv from candidates.jsonl.
+# Should run end-to-end within 5 minutes on CPU with 16GB RAM and no network.
+
+# ============================================================================
+# Compute environment
+# ============================================================================
+compute:
+  platform: "Local Intel i7 PC"
+  cpu_cores: 8
+  ram_gb: 16
+  python_version: "3.13.0"
+  os: "Windows 11"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: true
+  pre_computation_time_minutes: 0.25  # Precomputes BM25 index in ~15 seconds
+
+# ============================================================================
+# AI tools declaration
+# ============================================================================
+ai_tools_used:
+  - "Claude"
+  - "Cursor"
+
+ai_usage_summary: |
+  Used Claude/Cursor for code architecture, refactoring, and design of BM25 retrieval
+  and detailed scoring and availability multiplier functions.
+
+# ============================================================================
+# Approach summary
+# ============================================================================
+methodology_summary: |
+  Two-stage ranking pipeline with fast BM25 lexical recall of top 1000 candidates
+  followed by a detailed Fit Scorer (seniority, experience, title, company type,
+  education, job-hopping penalty) and platform Availability Multiplier (location,
+  notice period, activity, response rates). Disqualifies honeypots with duration
+  anomalies, skill duration mismatches, and title-skill mismatches.
+
+# ============================================================================
+# Declarations
+# ============================================================================
+declarations:
+  read_submission_spec: true        # I have read submission_spec.md in full
+  code_is_original_work: true       # My code is my team's original work
+  no_collusion: true                # I have not coordinated my submission
+  honeypot_check_done: true         # Set true if you explicitly checked for honeypots
+  reproduction_tested: true         # I have tested that my reproduce_command runs

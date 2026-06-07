@@ -1,0 +1,135 @@
+<resources>
+    <string name="app_name">SalesVoice</string>
+    <string name="default_shop_name">My Shop</string>
+
+    <!-- Common -->
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="settings">Settings</string>
+    <string name="go_back">Go Back</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_slide1_title">Welcome to SalesVoice</string>
+    <string name="onboarding_slide1_desc">Speak a sale like \'2 kg rice\' or \'do kilo chawal\' while holding the mic button to log it instantly offline!</string>
+    <string name="onboarding_slide2_title">Setup Your Catalog</string>
+    <string name="onboarding_slide2_desc">First, go to the Products tab and add your commodities along with their selling price, profit, and common spoken aliases.</string>
+    <string name="onboarding_slide3_title">Offline Speech Pack</string>
+    <string name="onboarding_slide3_desc">To log sales offline, make sure offline speech recognition packages (Hindi/English) are downloaded in: Settings → Language → Speech Recognition.</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_shop_name">Shop Name</string>
+    <string name="settings_currency_symbol">Currency Symbol</string>
+    <string name="settings_speech_language">Speech Recognition Language</string>
+    <string name="settings_app_language">App Language</string>
+    <string name="settings_change_shop_name">Change Shop Name</string>
+    <string name="settings_shop_name_saved">Shop Name Saved</string>
+    <string name="settings_shop_name_empty">Shop name cannot be empty</string>
+    <string name="settings_choose_currency">Choose Currency Symbol</string>
+    <string name="settings_currency_updated">Currency Updated to %s</string>
+    <string name="settings_choose_speech_lang">Choose Speech Language</string>
+    <string name="settings_speech_lang_updated">Speech Language Updated</string>
+    <string name="settings_choose_app_lang">Choose App Language</string>
+    <string name="settings_app_lang_updated">App Language Updated</string>
+    <string name="lang_english">English</string>
+    <string name="lang_hindi">हिंदी (Hindi)</string>
+    <string name="lang_marathi">मराठी (Marathi)</string>
+
+    <!-- Products -->
+    <string name="products_title">Product Catalog</string>
+    <string name="products_subtitle">Manage your catalog items, units, pricing and synonyms.</string>
+    <string name="products_empty_emoji">📦</string>
+    <string name="products_empty_title">No products yet</string>
+    <string name="products_empty_subtitle">Tap + to add your first product.</string>
+    <string name="products_add">Add Product</string>
+    <string name="products_edit">Edit Product</string>
+    <string name="products_name_hint">Product Name</string>
+    <string name="products_aliases_hint">Aliases (comma separated)</string>
+    <string name="products_aliases_helper">e.g. chawal, basmati, rice</string>
+    <string name="products_unit_label">Unit of Measure</string>
+    <string name="products_price_hint">Selling Price per Unit</string>
+    <string name="products_profit_hint">Profit per Unit</string>
+    <string name="products_name_empty_error">Name cannot be empty</string>
+    <string name="products_price_error">Enter a price greater than 0</string>
+    <string name="products_profit_error">Profit must be between 0 and price</string>
+    <string name="products_duplicate_error">A product with this name already exists</string>
+    <string name="products_updated">Product updated</string>
+    <string name="products_added">Product added</string>
+    <string name="products_delete_title">Delete Product?</string>
+    <string name="products_delete_message">Are you sure you want to delete %s? This will not affect past sales logs.</string>
+    <string name="products_deleted">%s deleted</string>
+    <string name="products_profit_label">Profit: </string>
+    <string name="products_edit_cd">Edit</string>
+    <string name="products_delete_cd">Delete</string>
+
+    <!-- Record -->
+    <string name="record_sales_zero">0 sales today</string>
+    <string name="record_sales_count">%d sales today</string>
+    <string name="record_warning_no_products">⚠ Add products first before recording sales.</string>
+    <string name="record_hold_to_speak">Hold to Speak</string>
+    <string name="record_listening">Listening…</string>
+    <string name="record_processing">Processing…</string>
+    <string name="record_sale_logged">Sale Logged Successfully</string>
+    <string name="record_sale_detail">%1$s: %2$s %3$s → %4$s (Profit: %5$s)</string>
+    <string name="record_product_not_found">Product Not Found</string>
+    <string name="record_product_not_found_detail">Spoken: \'%1$s\'. Tap the \'Products\' tab to add this product.</string>
+    <string name="record_sale_failed">Failed to Log Sale</string>
+    <string name="record_empty_log">No sales yet. Hold the button to record your first sale.</string>
+    <string name="record_total_format">Total: %s</string>
+    <string name="record_profit_format">Profit: %s</string>
+    <string name="record_delete_title">Delete Sale Record?</string>
+    <string name="record_delete_message">Are you sure you want to delete the sale of %1$s %2$s %3$s?</string>
+    <string name="record_sale_deleted">Sale entry deleted</string>
+    <string name="record_mic_permission_title">Microphone Permission Needed</string>
+    <string name="record_mic_permission_message">Microphone permission is required to log sales by speaking.</string>
+    <string name="record_mic_permission_allow">Allow</string>
+    <string name="record_mic_permission_snackbar">Microphone permission is required to record sales.</string>
+    <string name="record_offline_pack_title">Offline Language Pack Required</string>
+    <string name="record_offline_pack_message">For voice commands to work offline, please download the offline speech recognition package for English/Hindi in your phone Settings.</string>
+    <string name="record_open_settings">Open Settings</string>
+    <string name="record_offline_download_started">Offline language pack download started in background.</string>
+    <string name="record_delete_sale_cd">Delete Sale Log</string>
+
+    <!-- Report -->
+    <string name="report_title">Sales Performance</string>
+    <string name="report_subtitle">Track daily totals, profits, and commodity metrics.</string>
+    <string name="report_prev_day">Previous Day</string>
+    <string name="report_next_day">Next Day</string>
+    <string name="report_revenue">Revenue</string>
+    <string name="report_profit">Profit</string>
+    <string name="report_sales">Sales</string>
+    <string name="report_entries_zero">0 entries</string>
+    <string name="report_one_entry">1 sale</string>
+    <string name="report_entries">%d sales</string>
+    <string name="report_col_commodity">COMMODITY</string>
+    <string name="report_col_qty">QTY SOLD</string>
+    <string name="report_col_revenue">REVENUE</string>
+    <string name="report_col_profit">PROFIT</string>
+    <string name="report_empty">No sales logged for this date.</string>
+    <string name="report_share">Share Report</string>
+    <string name="report_no_sales_share">No sales to share</string>
+    <string name="report_share_header">📊 Sales Report — %s</string>
+    <string name="report_share_shop">Shop: %s</string>
+    <string name="report_share_separator">------------------------------</string>
+    <string name="report_share_total_revenue">Total Revenue: %s</string>
+    <string name="report_share_total_profit">Total Profit: %s</string>
+    <string name="report_share_total_sales">Total Sales: %s</string>
+    <string name="report_share_subject">Sales Report - %s</string>
+    <string name="report_share_chooser">Share Report via</string>
+
+    <!-- Voice Errors -->
+    <string name="voice_error_no_match">Couldn\'t understand. Please speak clearly.</string>
+    <string name="voice_error_timeout">No speech detected. Try again.</string>
+    <string name="voice_error_audio">Microphone error.</string>
+    <string name="voice_error_client">Offline speech engine client error.</string>
+    <string name="voice_error_generic">Speech error (%d).</string>
+
+    <!-- Parser Errors -->
+    <string name="parser_error_no_quantity">Couldn\'t extract quantity or product. Example: say \'2 kg Rice\'</string>
+
+    <!-- Sale Log Item -->
+    <string name="sale_profit_format">Profit: %s</string>
+</resources>
