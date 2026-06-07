@@ -739,6 +739,86 @@ def main():
     # Highest score first (descending), ties broken by candidate_id ascending
     scored_candidates.sort(key=lambda x: (-x["final_score"], x["candidate_id"]))
     
+    # --- STAGE 2.5: CROSS-ENCODER RE-RANKING ---
+    # The cross-encoder jointly processes (query, candidate) pairs for more accurate
+    # relevance estimation than the bi-encoder's independent encoding.
+    # We re-rank the top 250 candidates (feasible on CPU in ~30-60s).
+    
+    CROSS_ENCODER_TOP_K = 250
+    cross_encoder_path = Path("./model_cache/cross-encoder-ms-marco-MiniLM-L-6-v2")
+    
+    if cross_encoder_path.exists():
+        from sentence_transformers.cross_encoder import CrossEncoder
+        print(f"Loading cross-encoder from {cross_encoder_path}...")
+        cross_encoder = CrossEncoder(str(cross_encoder_path))
+        
+        # Select top 250 non-honeypot candidates for re-ranking
+        top_k_pool = scored_candidates[:CROSS_ENCODER_TOP_K]
+        remaining = scored_candidates[CROSS_ENCODER_TOP_K:]
+        
+        # Build rich text representations for cross-encoder input
+        # Cross-encoders benefit from more detailed text since they jointly attend
+        cross_encoder_pairs = []
+        for item in top_k_pool:
+            cand = item["cand"]
+            profile = cand.get("profile", {})
+            career = cand.get("career_history", [])
+            skills_list = cand.get("skills", [])
+            
+            title = profile.get("current_title", "")
+            headline = profile.get("headline", "")
+            summary = profile.get("summary", "")
+            skills_str = ", ".join(s.get("name", "") for s in skills_list[:20])
+            
+            # Include recent career context for richer signal
+            recent_roles = []
+            for job in career[:3]:
+                job_title = job.get("title", "")
+                company = job.get("company_name", "")
+                if job_title:
+                    recent_roles.append(f"{job_title} at {company}" if company else job_title)
+            career_str = ". ".join(recent_roles)
+            
+            candidate_text = f"{title}. {headline}. {summary}. Skills: {skills_str}. Recent: {career_str}."
+            cross_encoder_pairs.append((query_text, candidate_text))
+        
+        print(f"Cross-encoder scoring {len(cross_encoder_pairs)} candidates...")
+        ce_scores = cross_encoder.predict(cross_encoder_pairs, batch_size=32, show_progress_bar=False)
+        
+        # Normalize cross-encoder scores to [0, 1]
+        ce_min, ce_max = float(min(ce_scores)), float(max(ce_scores))
+        ce_range = ce_max - ce_min if ce_max > ce_min else 1.0
+        
+        # Normalize fit scores to [0, 1] over the top-K pool
+        fit_scores = [item["final_score"] for item in top_k_pool]
+        fit_min, fit_max = min(fit_scores), max(fit_scores)
+        fit_range = fit_max - fit_min if fit_max > fit_min else 1.0
+        
+        # Blend: 70% heuristic fit + 30% cross-encoder relevance
+        # This preserves our domain-specific signals while leveraging
+        # the cross-encoder's superior semantic understanding.
+        ALPHA_FIT = 0.70
+        ALPHA_CE = 0.30
+        
+        for i, item in enumerate(top_k_pool):
+            norm_fit = (item["final_score"] - fit_min) / fit_range
+            norm_ce = (float(ce_scores[i]) - ce_min) / ce_range
+            
+            # Blended score in the same scale as original final_score
+            blended = ALPHA_FIT * norm_fit + ALPHA_CE * norm_ce
+            # Re-scale back to original score range for monotonicity
+            item["final_score"] = round(fit_min + blended * fit_range, 4)
+            item["cross_encoder_score"] = float(ce_scores[i])
+        
+        # Re-sort top-K pool by blended score
+        top_k_pool.sort(key=lambda x: (-x["final_score"], x["candidate_id"]))
+        
+        # Merge: re-ranked top-K + remaining
+        scored_candidates = top_k_pool + remaining
+        print(f"Stage 2.5 complete: Cross-encoder re-ranked top {CROSS_ENCODER_TOP_K} candidates.")
+    else:
+        print(f"Warning: Cross-encoder not found at {cross_encoder_path}. Skipping Stage 2.5.")
+    
     # Select top 100
     top_100 = scored_candidates[:100]
     
