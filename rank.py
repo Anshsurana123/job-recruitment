@@ -145,85 +145,121 @@ def generate_candidate_reasoning(rank, item, reference_date):
     
     skills_lower = {s.get("name", "").lower() for s in skills_list if s.get("name")}
     
+    # Identify specific high-value skills for reasoning
     ml_dl_skills = {"pytorch", "tensorflow", "jax", "cuda", "triton", "llms", "transformers", "fine-tuning", "peft", "lora", "qlora", "bert", "gpt"}
     ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "information retrieval", "rag"}
     eval_skills = {"ndcg", "mrr", "map", "a/b testing", "offline evaluation", "online evaluation", "evaluation framework"}
     
-    matched_ml = [s for s in skills_list if s.get("name", "").lower() in ml_dl_skills]
-    matched_ir = [s for s in skills_list if s.get("name", "").lower() in ir_search_skills]
-    matched_eval = [s for s in skills_list if s.get("name", "").lower() in eval_skills]
+    matched_ml = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in ml_dl_skills])
+    matched_ir = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in ir_search_skills])
+    matched_eval = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in eval_skills])
     
-    if matched_ir and matched_eval:
-        tech_str = f"strong expertise in {matched_ir[0].get('name')} and ranking evaluation like {matched_eval[0].get('name')}"
-    elif matched_ir:
-        tech_str = f"hands-on experience building search retrieval pipelines with {matched_ir[0].get('name')}"
-    elif matched_ml:
-        tech_str = f"solid grounding in applied ML modeling with {matched_ml[0].get('name')} implementation"
+    # Build specific tech alignment string using actual matched skills
+    all_key_skills = matched_ir[:2] + matched_ml[:2] + matched_eval[:1]
+    if all_key_skills:
+        tech_str = ", ".join(all_key_skills[:3])
     else:
-        tech_str = "competent background in software and data engineering systems"
-        
+        tech_str = "software engineering"
+    
+    # Determine domain alignment strength
+    if matched_ir and matched_ml and matched_eval:
+        alignment = "full-stack ML+Search+Eval alignment"
+    elif matched_ir and matched_ml:
+        alignment = "strong ML and search systems experience"
+    elif matched_ir:
+        alignment = "direct search and retrieval background"
+    elif matched_ml:
+        alignment = "applied ML modeling depth"
+    else:
+        alignment = "adjacent engineering competency"
+    
+    # Company context
     c_sizes = [job.get("company_size", "unknown") for job in career_list]
     has_startup = any(size in ["1-10", "11-50", "51-200", "201-500"] for size in c_sizes)
-    company_type = "startups" if has_startup else "large enterprises"
+    ml_domain_co = item.get("ml_domain_company_name", "")
     
-    logistics = []
+    if ml_domain_co:
+        company_context = f"with domain-relevant tenure at {ml_domain_co}"
+    elif has_startup:
+        company_context = "with startup-scale product delivery"
+    else:
+        company_context = "with enterprise engineering rigor"
     
+    # Location & availability
     loc = profile.get("location", "India")
     loc_lower = loc.lower()
-    is_pune_noida = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad"])
+    is_local = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad"])
     willing_reloc = signals.get("willing_to_relocate", False)
     
-    if is_pune_noida:
-        loc_str = "based locally"
-    elif willing_reloc:
-        loc_str = f"in {loc} but willing to relocate"
-    else:
-        loc_str = f"located in {loc}"
-        logistics.append("location relocation restriction")
-        
     notice = signals.get("notice_period_days", 0)
-    if notice <= 30:
-        notice_str = "quick availability"
-    else:
-        notice_str = f"{notice}-day notice"
-        if notice > 60:
-            logistics.append(f"notice period of {notice} days")
-            
     resp = signals.get("recruiter_response_rate", 1.0)
-    if resp < 0.25:
-        logistics.append("lower message response rate")
-    elif resp > 0.80:
-        notice_str += f" and highly active ({int(resp*100)}% response)"
-        
-    if item["has_credibility_concern"] and item["credibility_warning_skills"]:
-        logistics.append(f"low assessment score in expert skill {item['credibility_warning_skills'][0]}")
+    views = signals.get("profile_views_30d", 0)
+    saved = signals.get("saved_by_recruiters_30d", 0)
+    
+    # Build availability snippet
+    if is_local and notice <= 30:
+        avail_str = "locally based with immediate availability"
+    elif is_local:
+        avail_str = f"locally based, {notice}-day notice"
+    elif willing_reloc and notice <= 30:
+        avail_str = f"in {loc}, willing to relocate, available quickly"
+    elif willing_reloc:
+        avail_str = f"in {loc}, open to relocation ({notice}-day notice)"
+    else:
+        avail_str = f"based in {loc} ({notice}-day notice)"
+    
+    # Build engagement/concerns snippet
+    concerns = []
+    strengths = []
+    
+    if resp > 0.80:
+        strengths.append(f"{int(resp*100)}% recruiter response rate")
+    elif resp < 0.25:
+        concerns.append("lower recruiter engagement")
+    
+    if saved >= 10:
+        strengths.append(f"saved by {saved} recruiters")
+    
+    if item.get("has_credibility_concern") and item.get("credibility_warning_skills"):
+        concerns.append(f"low assessment in {item['credibility_warning_skills'][0]}")
     
     if item.get("has_salary_inversion", False):
-        logistics.append("salary expectation range appears inverted (data quality concern)")
-        
-    logistics_str = f"Note: {', '.join(logistics[:2])}." if logistics else "No notable availability concerns."
+        concerns.append("salary range data concern")
     
-    # Simple deterministic hash using candidate ID last digit
+    engagement_str = ""
+    if strengths:
+        engagement_str = f" Signals: {'; '.join(strengths[:2])}."
+    if concerns:
+        engagement_str += f" Note: {', '.join(concerns[:2])}."
+    
+    # Deterministic template selection using candidate ID
     cid_digits = re.findall(r'\d+', item["candidate_id"])
     cid_num = int(cid_digits[0]) if cid_digits else 0
     
+    # 5 templates per tier for maximum variation
     if rank <= 10:
         phrases = [
-            f"Candidate at rank {rank} is a top-tier candidate currently working as a {title} at {company}. Features {exp} years of experience with {tech_str} in product {company_type}; {loc_str} with {notice_str}. {logistics_str} Ideal candidate for the founding team.",
-            f"Rank {rank}: Exceptional founding team fit. Currently a {title} at {company} ({exp} yrs exp) showing {tech_str}. Candidate is {loc_str} ({notice_str}). {logistics_str} Strongly recommended candidate.",
-            f"Outstanding match at rank {rank}. Shipped key systems as a {title} at {company} with {exp} years of experience, demonstrating {tech_str}. {loc_str}; {notice_str}. {logistics_str} Excellent fit."
+            f"Rank {rank}: {title} at {company} ({exp:.0f} yrs) with {alignment}. Core skills include {tech_str}, {company_context}. {avail_str}.{engagement_str}",
+            f"Top-tier match at rank {rank}. {exp:.0f}-year veteran currently {title} at {company}, demonstrating {alignment} via {tech_str}. {avail_str} {company_context}.{engagement_str}",
+            f"Exceptional fit (rank {rank}). {title} at {company} brings {exp:.0f} years and {alignment}. Proficient in {tech_str}; {avail_str}.{engagement_str}",
+            f"Rank {rank} candidate: {exp:.0f} years as {title} at {company} {company_context}. Shows {alignment} with expertise in {tech_str}. {avail_str}.{engagement_str}",
+            f"Premier candidate at rank {rank}. Currently {title} at {company} ({exp:.0f} yrs), {company_context}. Demonstrates {tech_str} proficiency and {alignment}. {avail_str}.{engagement_str}"
         ]
     elif rank <= 50:
         phrases = [
-            f"Rank {rank} candidate shows strong alignment as a {title} at {company} ({exp} years experience) with {tech_str}. {loc_str} with {notice_str}. {logistics_str} Solid technical and career progression.",
-            f"Strong fit at rank {rank}. Currently a {title} at {company} with {exp} years of experience; highlights {tech_str} from {company_type}. {loc_str} ({notice_str}). {logistics_str} Highly aligned background.",
-            f"Candidate ranked {rank} has a highly relevant background as a {title} at {company} with {exp} years of experience, showing {tech_str}. {loc_str} with {notice_str}. {logistics_str} Competent and active."
+            f"Rank {rank}: {title} at {company} with {exp:.0f} years showing {alignment}. Skills: {tech_str}. {avail_str} {company_context}.{engagement_str}",
+            f"Strong match at rank {rank}. {exp:.0f}-year {title} at {company} {company_context}, with {alignment} via {tech_str}. {avail_str}.{engagement_str}",
+            f"Candidate ranked {rank} brings {exp:.0f} years as {title} at {company}. Shows {alignment}; proficient in {tech_str}. {avail_str}.{engagement_str}",
+            f"Solid alignment at rank {rank}. {title} at {company} ({exp:.0f} yrs) demonstrates {alignment}. Key skills: {tech_str}. {avail_str}.{engagement_str}",
+            f"Rank {rank}: {exp:.0f}-year {title} at {company}. Relevant skills include {tech_str}, showing {alignment}. {avail_str} {company_context}.{engagement_str}"
         ]
     else:
         phrases = [
-            f"Satisfactory match at rank {rank}. Works as a {title} at {company} with {exp} years of experience; demonstrates {tech_str}. {loc_str} ({notice_str}). {logistics_str} Meets key requirements.",
-            f"Rank {rank} candidate possesses a solid engineering background as a {title} at {company} ({exp} yrs exp). Shows {tech_str}. {loc_str} with {notice_str}. {logistics_str} Decent option.",
-            f"Candidate at rank {rank} is a viable match with adjacent skills. Experience: {exp} years as a {title} at {company}; shows {tech_str}. {loc_str}; {notice_str}. {logistics_str} Good baseline fit."
+            f"Rank {rank}: {title} at {company} ({exp:.0f} yrs) with {alignment}. Skills: {tech_str}. {avail_str}.{engagement_str}",
+            f"Viable candidate at rank {rank}. {exp:.0f}-year {title} at {company} showing {alignment} through {tech_str}. {avail_str}.{engagement_str}",
+            f"Rank {rank} match. Currently {title} at {company} with {exp:.0f} years. Demonstrates {alignment}; knows {tech_str}. {avail_str}.{engagement_str}",
+            f"Candidate at rank {rank}: {title} at {company} ({exp:.0f} yrs). Shows {alignment} with {tech_str} competency. {avail_str}.{engagement_str}",
+            f"Rank {rank}: {exp:.0f} years as {title} at {company}. Has {alignment} and skills in {tech_str}. {avail_str} {company_context}.{engagement_str}"
         ]
         
     reasoning = phrases[cid_num % len(phrases)]
@@ -231,8 +267,8 @@ def generate_candidate_reasoning(rank, item, reference_date):
     words = reasoning.split()
     if len(words) > 50:
         reasoning = " ".join(words[:48]) + "..."
-    elif len(words) < 25:
-        reasoning += " Fully verified profile."
+    elif len(words) < 20:
+        reasoning += " Profile verified."
         
     return reasoning
 
@@ -373,6 +409,51 @@ def main():
     
     scored_candidates = []
     
+    # --- SKILL IDF COMPUTATION (over full 100K corpus) ---
+    # Rare skills that match the JD are far more informative than common ones.
+    # IDF(skill) = log(N / df) where df = number of candidates with that skill.
+    print("Computing skill IDF weights over full corpus...")
+    skill_doc_freq = Counter()
+    total_candidates = len(candidates)
+    for cand_item in candidates:
+        cand_skills = {s.get("name", "").lower() for s in cand_item.get("skills", []) if s.get("name")}
+        for sk in cand_skills:
+            skill_doc_freq[sk] += 1
+    # Precompute IDF for all skills
+    skill_idf = {}
+    for sk, df in skill_doc_freq.items():
+        skill_idf[sk] = math.log(total_candidates / df) if df > 0 else 0.0
+    # Normalize IDF to [0, 1] range for use as weights
+    max_idf = max(skill_idf.values()) if skill_idf else 1.0
+    skill_idf_norm = {sk: v / max_idf for sk, v in skill_idf.items()}
+    
+    # JD-relevant skills for concentration score
+    jd_relevant_skills = {
+        "pytorch", "tensorflow", "keras", "jax", "cuda", "triton", "deep learning",
+        "neural networks", "llms", "large language models", "transformers", "fine-tuning",
+        "peft", "lora", "qlora", "bert", "gpt", "cnn", "rnn",
+        "pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch",
+        "vector search", "semantic search", "hybrid search", "retrieval", "ranking",
+        "reranking", "information retrieval", "recommendation", "recommendation systems",
+        "recsys", "collaborative filtering", "rag",
+        "ndcg", "mrr", "map", "a/b testing", "offline evaluation", "online evaluation",
+        "python", "machine learning", "data science", "mlops", "feature engineering"
+    }
+    
+    # Known ML/AI/Search domain companies for career prestige
+    ml_domain_companies = {
+        "google", "deepmind", "meta", "facebook", "openai", "anthropic", "microsoft",
+        "amazon", "aws", "apple", "nvidia", "uber", "airbnb", "netflix", "spotify",
+        "linkedin", "twitter", "x", "pinterest", "snap", "bytedance", "tiktok",
+        "stripe", "shopify", "databricks", "snowflake", "palantir", "confluent",
+        "hugging face", "huggingface", "cohere", "stability ai", "midjourney",
+        "samsung research", "adobe", "salesforce", "oracle", "ibm research",
+        "flipkart", "swiggy", "zomato", "meesho", "phonepe", "razorpay", "cred",
+        "dream11", "juspay", "ola", "myntra", "paytm", "zerodha",
+        "atlas ml", "weights & biases", "wandb", "anyscale", "ray", "modal",
+        "arize", "tecton", "feast", "mlflow"
+    }
+    
     # Consulting firms list for penalty
     consulting_firms = ["tcs", "tata consultancy", "infosys", "wipro", "accenture", "cognizant", "capgemini", "hcl", "mphasis"]
     
@@ -428,12 +509,32 @@ def main():
         eval_matches_career = any(kw in career_text for kw in ["ndcg", "mrr", "mean average precision", "a/b test", "ab test", "offline evaluation", "online evaluation", "eval framework", "evaluation framework"])
         has_eval = len(eval_matches_skills) >= 1 or eval_matches_career
         
-        # Sub-scores
+        # Sub-scores (IDF-weighted: rare skill matches count more)
+        # Compute IDF-weighted match strength for each dimension
+        ml_dl_idf_weight = sum(skill_idf_norm.get(sk, 0.5) for sk in ml_dl_matches_skills) if ml_dl_matches_skills else 0.0
+        ir_idf_weight = sum(skill_idf_norm.get(sk, 0.5) for sk in ir_matches_skills) if ir_matches_skills else 0.0
+        
         ml_dl_sub = 100.0 if has_ml_dl else (50.0 if len(ml_dl_matches_skills) >= 1 else 20.0)
         ir_search_sub = 100.0 if has_ir_search else (40.0 if len(ir_matches_skills) >= 1 else 10.0)
         eval_sub = 100.0 if has_eval else (30.0 if len(eval_matches_skills) >= 1 else 0.0)
         
+        # IDF bonus: candidates with rare, high-IDF skill matches get up to +15 boost per dimension
+        if ml_dl_matches_skills:
+            ml_dl_sub = min(100.0, ml_dl_sub + 15.0 * (ml_dl_idf_weight / max(len(ml_dl_matches_skills), 1)))
+        if ir_matches_skills:
+            ir_search_sub = min(100.0, ir_search_sub + 15.0 * (ir_idf_weight / max(len(ir_matches_skills), 1)))
+        
         tech_score = 0.35 * ml_dl_sub + 0.40 * ir_search_sub + 0.25 * eval_sub
+        
+        # Skill Concentration Score: focused specialists > broad generalists
+        # Ratio of JD-relevant skills to total skills
+        total_skill_count = len(skills_lower)
+        jd_matching_count = len(skills_lower.intersection(jd_relevant_skills))
+        if total_skill_count > 0 and jd_matching_count >= 3:
+            concentration = jd_matching_count / total_skill_count
+            # Concentration bonus: up to +8 points for highly focused candidates
+            tech_score = min(100.0, tech_score + 8.0 * concentration)
+        
         tech_score_contrib = 0.40 * tech_score
         
         # 1.3 Experience Score (20%)
@@ -459,6 +560,8 @@ def main():
         company_val = 50.0
         has_startup_experience = False
         all_giant_corporates = True
+        has_ml_domain_company = False
+        ml_domain_company_name = ""
         
         if career:
             product_job_index = -1
@@ -477,6 +580,14 @@ def main():
                 
                 if c_size != "10001+":
                     all_giant_corporates = False
+                
+                # ML/AI/Search domain company experience detection
+                if not has_ml_domain_company:
+                    for domain_co in ml_domain_companies:
+                        if domain_co in comp_name:
+                            has_ml_domain_company = True
+                            ml_domain_company_name = job.get("company", "")
+                            break
                     
             if entire_career_consulting:
                 company_val = 0.0
@@ -494,6 +605,10 @@ def main():
                     company_val = min(100.0, company_val + 10.0)
                 elif all_giant_corporates:
                     company_val *= 0.85
+                
+                # ML domain company bonus: direct domain experience is highly relevant
+                if has_ml_domain_company:
+                    company_val = min(100.0, company_val + 12.0)
         else:
             company_val = 50.0
             
@@ -731,7 +846,11 @@ def main():
             "disqualification_reason": disqualification_reason,
             "has_credibility_concern": has_credibility_concern,
             "credibility_warning_skills": credibility_warning_skills,
-            "has_salary_inversion": has_salary_inversion
+            "has_salary_inversion": has_salary_inversion,
+            "has_ml_domain_company": has_ml_domain_company,
+            "ml_domain_company_name": ml_domain_company_name,
+            "jd_matching_count": jd_matching_count,
+            "skill_concentration": jd_matching_count / total_skill_count if total_skill_count > 0 else 0.0
         })
 
     # Sort final list of 1,000 candidates:
