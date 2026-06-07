@@ -3,6 +3,8 @@ pandas
 numpy
 python-dotenv
 requests
+sentence-transformers
+torch
 
 # Core Web Framework (if needed for endpoints)
 fastapi
