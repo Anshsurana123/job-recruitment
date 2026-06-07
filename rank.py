@@ -211,7 +211,7 @@ def generate_candidate_reasoning(rank, item, reference_date):
     
     notice = signals.get("notice_period_days", 0)
     resp = signals.get("recruiter_response_rate", 1.0)
-    views = signals.get("profile_views_30d", 0)
+    views = signals.get("profile_views_received_30d", 0)
     saved = signals.get("saved_by_recruiters_30d", 0)
     
     # Build availability snippet
@@ -243,16 +243,45 @@ def generate_candidate_reasoning(rank, item, reference_date):
     
     if item.get("has_salary_inversion", False):
         concerns.append("salary range data concern")
+        
+    # Flag high notice period for top candidates
+    if notice > 90 and rank <= 30:
+        concerns.append(f"{notice}-day notice period")
+        
+    # Flag location friction for top candidates not in target cities
+    is_target_city = any(c in loc_lower for c in ["pune", "noida", "delhi", "gurugram", "gurgaon", "hyderabad", "mumbai"])
+    country_lower = profile.get("country", "").lower()
+    if not is_target_city and country_lower != "india" and rank <= 20:
+        concerns.append(f"based outside India ({profile.get('location', 'unknown')})")
+        
+    # Flag low activity for top candidates
+    last_active = signals.get("last_active_date", "")
+    if last_active:
+        try:
+            active_d = datetime.date.fromisoformat(last_active)
+            days_inactive = (reference_date - active_d).days
+            if days_inactive > 180 and rank <= 50:
+                concerns.append(f"inactive for {days_inactive} days")
+        except Exception:
+            pass
     
     engagement_str = ""
     if strengths:
-        engagement_str = f" Signals: {'; '.join(strengths[:2])}."
+        engagement_str += f" Signals: {'; '.join(strengths[:2])}."
     if concerns:
         engagement_str += f" Note: {', '.join(concerns[:2])}."
     
-    # Deterministic template selection using candidate ID
+    # Deterministic template selection using candidate ID & fingerprint
     cid_digits = re.findall(r'\d+', item["candidate_id"])
     cid_num = int(cid_digits[0]) if cid_digits else 0
+    
+    variation_seed = (
+        cid_num +
+        int(exp) * 5 +
+        len(matched_ir) * 7 +
+        len(matched_ml) * 3 +
+        (11 if signals.get("open_to_work_flag") else 0)
+    )
     
     # 5 templates per tier for maximum variation
     if rank <= 10:
@@ -280,13 +309,21 @@ def generate_candidate_reasoning(rank, item, reference_date):
             f"Rank {rank}: {exp:.0f} years as {title} at {company}. Has {alignment} and skills in {tech_str}. {avail_str} {company_context}.{engagement_str}"
         ]
         
-    reasoning = phrases[cid_num % len(phrases)]
+    reasoning = phrases[variation_seed % len(phrases)]
     
     words = reasoning.split()
-    if len(words) > 50:
-        reasoning = " ".join(words[:48]) + "..."
-    elif len(words) < 20:
-        reasoning += " Profile verified."
+    if len(words) > 80:
+        sentences = reasoning.split(". ")
+        truncated = ""
+        for sent in sentences:
+            candidate_str = (truncated + ". " + sent).strip(". ")
+            if len(candidate_str.split()) <= 80:
+                truncated = candidate_str
+            else:
+                break
+        reasoning = truncated.rstrip(".") + "." if truncated else " ".join(words[:78]) + "."
+    else:
+        reasoning = reasoning.rstrip(".") + "."
         
     return reasoning
 
@@ -647,7 +684,10 @@ def main():
         title_lower = current_title.lower()
         title_val = 60.0
         
-        strong_title_kws = ["ai engineer", "machine learning engineer", "mle", "deep learning", "nlp", "retrieval", "search engineer", "recommendation"]
+        strong_title_kws = [
+            "ai engineer", "machine learning engineer", "mle", "deep learning", "nlp", "retrieval", "search engineer", "recommendation",
+            "data scientist", "applied scientist", "ml researcher", "ai researcher", "research engineer"
+        ]
         medium_title_kws = ["software", "backend", "data engineer", "analytics engineer", "full stack", "frontend", "devops", "infrastructure", "systems engineer", "developer", "qa"]
         non_tech_title_kws = ["marketing", "accountant", "hr", "operations", "sales", "support", "finance", "recruiter", "customer"]
         mgmt_title_kws = ["manager", "director", "vp", "chief architect", "lead architect", "head of", "principal engineer", "staff engineer"]
@@ -698,7 +738,7 @@ def main():
             company_score_contrib + 
             title_score_contrib + 
             edu_score_contrib
-        )
+        ) / 1.3
         
         # 1.6.5 Skill Assessment Score Modifier
         assess_scores = signals.get("skill_assessment_scores", {})
@@ -756,15 +796,15 @@ def main():
         loc_lower = profile.get("location", "").lower()
         country_lower = profile.get("country", "").lower()
         
-        is_pune_noida_ncr = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad"])
-        is_other_tier1 = any(city in loc_lower for city in ["bangalore", "bengaluru", "hyderabad", "mumbai", "chennai"])
+        is_jd_named_cities = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad", "hyderabad", "mumbai"])
+        is_other_tier1 = any(city in loc_lower for city in ["bangalore", "bengaluru", "chennai"])
         
         willing_reloc = signals.get("willing_to_relocate", False)
         
-        if is_pune_noida_ncr:
+        if is_jd_named_cities:
             loc_modifier = 1.0
         elif is_other_tier1:
-            loc_modifier = 0.95 if willing_reloc else 0.70
+            loc_modifier = 0.90 if willing_reloc else 0.72
         elif country_lower == "india" or "india" in loc_lower:
             loc_modifier = 0.85 if willing_reloc else 0.65
         else:  # outside India
@@ -810,6 +850,38 @@ def main():
             beh_modifier *= 0.5
         elif resp_rate < 0.50:
             beh_modifier *= (0.5 + 0.5 * (resp_rate - 0.15) / 0.35)
+            
+        # Response time penalty — slow responders hurt real hiring velocity
+        avg_resp_hours = signals.get("avg_response_time_hours", 0)
+        if avg_resp_hours > 0:  # 0 means no recruiter contact history — treat as neutral
+            if avg_resp_hours <= 24:
+                pass  # same-day: no penalty
+            elif avg_resp_hours <= 72:
+                beh_modifier *= 0.95   # 1-3 days: minor friction
+            elif avg_resp_hours <= 120:
+                beh_modifier *= 0.88   # 3-5 days: noticeable friction
+            elif avg_resp_hours <= 168:
+                beh_modifier *= 0.78   # up to 1 week: significant friction
+            elif avg_resp_hours <= 336:
+                beh_modifier *= 0.65   # 1-2 weeks: severe friction
+            else:
+                beh_modifier *= 0.50   # over 2 weeks: functionally unresponsive
+                
+        # Offer acceptance rate — predicts whether engagement leads to a hire
+        offer_rate = signals.get("offer_acceptance_rate", -1)
+        if offer_rate == -1:
+            pass  # No offer history — neutral, don't penalise
+        elif offer_rate < 0.15:
+            beh_modifier *= 0.65  # Rarely accepts: strong negative signal
+        elif offer_rate < 0.35:
+            beh_modifier *= 0.82  # Below-average acceptance: moderate penalty
+        elif offer_rate > 0.70:
+            beh_modifier *= 1.05  # High acceptance rate: positive signal, cap via min(1.10, ...)
+            
+        # Work mode preference — JD is hybrid; remote-only preference is a soft mismatch
+        work_mode = signals.get("preferred_work_mode", "flexible")
+        if work_mode == "remote":
+            beh_modifier *= 0.90   # Soft mismatch — can still apply, just slight friction
             
         int_rate = signals.get("interview_completion_rate", 1.0)
         if int_rate < 0.30:
