@@ -44,3 +44,5 @@ __pycache__/
 # Large database and cache directories
 talent_radar/chroma_db/
 talent_radar/graphify-out/
+/graphify-out/
+/model_cache/
