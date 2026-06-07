@@ -4,8 +4,8 @@ from sentence_transformers import SentenceTransformer
 from sentence_transformers.cross_encoder import CrossEncoder
 
 def download_bi_encoder():
-    model_name = "all-MiniLM-L6-v2"
-    cache_dir = Path("./model_cache") / model_name
+    model_name = "BAAI/bge-small-en-v1.5"
+    cache_dir = Path("./model_cache/bge-small-en-v1.5")
     
     print(f"Checking for bi-encoder cache at '{cache_dir}'...")
     if cache_dir.exists() and (cache_dir / "model.safetensors").exists():

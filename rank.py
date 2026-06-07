@@ -20,6 +20,24 @@ def parse_date(d_str):
     except:
         return None
 
+def infer_seniority_level(title):
+    title_lower = title.lower()
+    if "director" in title_lower:
+        return 6
+    if "principal" in title_lower or "staff" in title_lower:
+        return 5
+    if "lead" in title_lower or "head" in title_lower:
+        return 4
+    if "senior" in title_lower or "sr" in title_lower:
+        return 3
+    if "junior" in title_lower or "jr" in title_lower:
+        return 1
+    if "intern" in title_lower or "co-op" in title_lower:
+        return 0
+    if "associate" in title_lower:
+        return 1
+    return 2
+
 def tokenize(text):
     # Lowercase and extract alphanumeric tokens of length >= 2
     return re.findall(r'\b[a-z0-9_]{2,}\b', text.lower())
@@ -357,7 +375,7 @@ def main():
     
     # Load local SentenceTransformer offline model
     from sentence_transformers import SentenceTransformer
-    model_cache_path = Path("./model_cache/all-MiniLM-L6-v2")
+    model_cache_path = Path("./model_cache/bge-small-en-v1.5")
     if not model_cache_path.exists():
         print(f"Error: Local model cache not found at {model_cache_path}. Please run download_model.py first.")
         sys.exit(1)
@@ -374,7 +392,9 @@ def main():
         top_texts.append(text)
         
     print("Encoding query and top 1,000 candidates dynamically on CPU...")
-    query_embedding = model.encode(query_text, convert_to_numpy=True, normalize_embeddings=True)
+    # BGE-small-en-v1.5 requires prefix for query embedding
+    bge_query = "Represent this sentence for searching relevant passages: " + query_text
+    query_embedding = model.encode(bge_query, convert_to_numpy=True, normalize_embeddings=True)
     cand_embeddings = model.encode(top_texts, batch_size=64, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
     
     # Cosine similarity using dot product on normalized vectors
@@ -537,7 +557,7 @@ def main():
         
         tech_score_contrib = 0.40 * tech_score
         
-        # 1.3 Experience Score (20%)
+        # 1.3 Experience Score (15%)
         exp_score = 60.0
         if 5.0 <= years_exp <= 9.0:
             exp_score = 100.0
@@ -553,7 +573,16 @@ def main():
         else:
             exp_score = max(50.0, 90.0 - 5.0 * (years_exp - 12.0))
             
-        exp_score_contrib = 0.20 * exp_score
+        exp_score_contrib = 0.15 * exp_score
+        
+        # 1.3.5 Career Velocity Score (5%)
+        chron_career = list(reversed(career))  # oldest first
+        upward_count = 0
+        for i in range(len(chron_career) - 1):
+            if infer_seniority_level(chron_career[i+1].get("title", "")) > infer_seniority_level(chron_career[i].get("title", "")):
+                upward_count += 1
+        velocity_score = min(100.0, 30.0 * upward_count)
+        velocity_score_contrib = 0.05 * velocity_score
         
         # 1.4 Company Type & Startup Vibe (15%)
         entire_career_consulting = True
@@ -661,7 +690,37 @@ def main():
         edu_score_contrib = 0.10 * edu_score
         
         # Sum Fit Score
-        fit_score = hybrid_score_contrib + tech_score_contrib + exp_score_contrib + company_score_contrib + title_score_contrib + edu_score_contrib
+        fit_score = (
+            hybrid_score_contrib + 
+            tech_score_contrib + 
+            exp_score_contrib + 
+            velocity_score_contrib + 
+            company_score_contrib + 
+            title_score_contrib + 
+            edu_score_contrib
+        )
+        
+        # 1.6.5 Skill Assessment Score Modifier
+        assess_scores = signals.get("skill_assessment_scores", {})
+        relevant_skills_set = ml_dl_skills.union(ir_search_skills)
+        assessment_bonus = 0.0
+        bonus_count = 0
+        for skill_name, score in assess_scores.items():
+            if skill_name.lower() not in relevant_skills_set:
+                continue
+            if score >= 75 and bonus_count < 2:
+                assessment_bonus += 3.0
+                bonus_count += 1
+            elif score < 40:
+                claimed_expert = any(
+                    s.get("name", "").lower() == skill_name.lower()
+                    and s.get("proficiency") == "expert"
+                    for s in skills
+                )
+                if claimed_expert:
+                    assessment_bonus -= 5.0
+        assessment_bonus = max(-10.0, min(6.0, assessment_bonus))
+        fit_score += assessment_bonus
         
         # 1.7 Junior Cap
         if years_exp < 2.0:
@@ -705,11 +764,11 @@ def main():
         if is_pune_noida_ncr:
             loc_modifier = 1.0
         elif is_other_tier1:
-            loc_modifier = 0.95 if willing_reloc else 0.7  # Recovery boost for Tier-1 relocators
+            loc_modifier = 0.95 if willing_reloc else 0.70
         elif country_lower == "india" or "india" in loc_lower:
-            loc_modifier = 0.8 if willing_reloc else 0.3
-        else:
-            loc_modifier = 0.1
+            loc_modifier = 0.85 if willing_reloc else 0.65
+        else:  # outside India
+            loc_modifier = 0.50 if willing_reloc else 0.30
             
         # 2.2 Notice Period Modifier
         notice_days = signals.get("notice_period_days", 0)
@@ -941,16 +1000,33 @@ def main():
     # Select top 100
     top_100 = scored_candidates[:100]
     
-    # Generate reasoning and assign ranks
+    # Normalize top 100 scores to [0, 1] range
+    max_score = max(item["final_score"] for item in top_100) if top_100 else 1.0
+    max_score = max_score if max_score > 0.0 else 1.0
+    
+    # Generate normalized scores first
+    temp_rows = []
+    for item in top_100:
+        norm_score = round(item["final_score"] / max_score, 4)
+        temp_rows.append({
+            "candidate_id": item["candidate_id"],
+            "score": norm_score,
+            "item": item
+        })
+        
+    # Sort by (-score, candidate_id) to break rounding ties deterministically
+    temp_rows.sort(key=lambda x: (-x["score"], x["candidate_id"]))
+    
+    # Generate reasoning and assign ranks in sorted order
     submission_rows = []
-    for rank_idx, item in enumerate(top_100):
+    for rank_idx, r in enumerate(temp_rows):
         rank = rank_idx + 1
-        reasoning = generate_candidate_reasoning(rank, item, REFERENCE_DATE)
+        reasoning = generate_candidate_reasoning(rank, r["item"], REFERENCE_DATE)
         
         submission_rows.append({
-            "candidate_id": item["candidate_id"],
+            "candidate_id": r["candidate_id"],
             "rank": rank,
-            "score": item["final_score"],
+            "score": r["score"],
             "reasoning": reasoning
         })
 
