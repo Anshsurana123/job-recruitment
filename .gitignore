@@ -21,6 +21,7 @@ candidates.jsonl
 candidates.jsonl.gz
 bm25_index_full.pkl
 bm25_index_sample.pkl
+*.pkl
 *runs_data_and_ai_challenge*
 __MACOSX/
 
