@@ -8,13 +8,13 @@
 team_name: "proud-franklin"  # Used in leaderboard and announcements
 
 primary_contact:
-  name: "Proud Franklin Team Lead"
-  email: "ml-engineer@example.com"   # Used for all organizer communication
-  phone: "+91-9999999999"        # Used for outreach
+  name: "Ansh Surana"
+  email: "anshsuran01@gmail.com"   # Used for all organizer communication
+  phone: "+91 8237750691"        # Used for outreach
 
 team_members:
-  - name: "Proud Franklin Member"
-    email: "ml-engineer@example.com"
+  - name: "Ansh Surana"
+    email: "anshsuran01@gmail.com"
     role: "ML Systems Engineer"
 
 # ============================================================================

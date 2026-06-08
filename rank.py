@@ -150,7 +150,7 @@ def build_candidate_fields(cand):
     
     return fields
 
-def generate_candidate_reasoning(rank, item, reference_date):
+def generate_candidate_reasoning(rank_unused, item, reference_date):
     cand = item["cand"]
     profile = cand.get("profile", {})
     career_list = cand.get("career_history", [])
@@ -163,7 +163,7 @@ def generate_candidate_reasoning(rank, item, reference_date):
     
     skills_lower = {s.get("name", "").lower() for s in skills_list if s.get("name")}
     
-    # Identify specific high-value skills for reasoning
+    # Identify specific core skills for JD alignment context
     ml_dl_skills = {"pytorch", "tensorflow", "jax", "cuda", "triton", "llms", "transformers", "fine-tuning", "peft", "lora", "qlora", "bert", "gpt"}
     ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "information retrieval", "rag"}
     eval_skills = {"ndcg", "mrr", "map", "a/b testing", "offline evaluation", "online evaluation", "evaluation framework"}
@@ -172,24 +172,27 @@ def generate_candidate_reasoning(rank, item, reference_date):
     matched_ir = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in ir_search_skills])
     matched_eval = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in eval_skills])
     
-    # Build specific tech alignment string using actual matched skills
-    all_key_skills = matched_ir[:2] + matched_ml[:2] + matched_eval[:1]
-    if all_key_skills:
-        tech_str = ", ".join(all_key_skills[:3])
-    else:
-        tech_str = "software engineering"
+    # Build dynamic tech alignment text
+    key_skills = []
+    if matched_ir: key_skills.append(matched_ir[0])
+    if matched_ml: key_skills.append(matched_ml[0])
+    if matched_eval: key_skills.append(matched_eval[0])
+    if len(key_skills) < 2 and len(matched_ir) > 1: key_skills.append(matched_ir[1])
+    if len(key_skills) < 2 and len(matched_ml) > 1: key_skills.append(matched_ml[1])
     
-    # Determine domain alignment strength
+    skills_str = ", ".join(key_skills) if key_skills else "applied machine learning"
+    
+    # Determine domain alignment description
     if matched_ir and matched_ml and matched_eval:
-        alignment = "full-stack ML+Search+Eval alignment"
+        alignment = "full-stack ML, search, and evaluation alignment"
     elif matched_ir and matched_ml:
-        alignment = "strong ML and search systems experience"
+        alignment = "strong search systems and ML modeling experience"
     elif matched_ir:
-        alignment = "direct search and retrieval background"
+        alignment = "specialized search and information retrieval experience"
     elif matched_ml:
-        alignment = "applied ML modeling depth"
+        alignment = "applied machine learning depth"
     else:
-        alignment = "adjacent engineering competency"
+        alignment = "general engineering and software delivery"
     
     # Company context
     c_sizes = [job.get("company_size", "unknown") for job in career_list]
@@ -197,7 +200,7 @@ def generate_candidate_reasoning(rank, item, reference_date):
     ml_domain_co = item.get("ml_domain_company_name", "")
     
     if ml_domain_co:
-        company_context = f"with domain-relevant tenure at {ml_domain_co}"
+        company_context = f"with prestigious domain tenure at {ml_domain_co}"
     elif has_startup:
         company_context = "with startup-scale product delivery"
     else:
@@ -208,122 +211,70 @@ def generate_candidate_reasoning(rank, item, reference_date):
     loc_lower = loc.lower()
     is_local = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad"])
     willing_reloc = signals.get("willing_to_relocate", False)
-    
     notice = signals.get("notice_period_days", 0)
-    resp = signals.get("recruiter_response_rate", 1.0)
-    views = signals.get("profile_views_received_30d", 0)
-    saved = signals.get("saved_by_recruiters_30d", 0)
     
-    # Build availability snippet
-    if is_local and notice <= 30:
-        avail_str = "locally based with immediate availability"
-    elif is_local:
-        avail_str = f"locally based, {notice}-day notice"
-    elif willing_reloc and notice <= 30:
-        avail_str = f"in {loc}, willing to relocate, available quickly"
+    if is_local:
+        loc_str = "locally based"
     elif willing_reloc:
-        avail_str = f"in {loc}, open to relocation ({notice}-day notice)"
+        loc_str = f"in {loc} (open to relocation)"
     else:
-        avail_str = f"based in {loc} ({notice}-day notice)"
+        loc_str = f"based in {loc}"
+        
+    avail_str = f"{loc_str} with {notice}-day notice" if notice > 0 else f"{loc_str} available immediately"
     
-    # Build engagement/concerns snippet
+    # Build engagement strengths and honest concerns dynamically
     concerns = []
     strengths = []
     
-    if resp > 0.80:
-        strengths.append(f"{int(resp*100)}% recruiter response rate")
-    elif resp < 0.25:
-        concerns.append("lower recruiter engagement")
+    resp = signals.get("recruiter_response_rate", 1.0)
+    if resp >= 0.85:
+        strengths.append(f"high responsiveness ({int(resp*100)}% reply rate)")
     
+    saved = signals.get("saved_by_recruiters_30d", 0)
     if saved >= 10:
         strengths.append(f"saved by {saved} recruiters")
-    
+        
+    # Check flags for honest concerns
+    if item.get("is_cv_speech_primary") and not item.get("has_nlp_ir_compensation"):
+        concerns.append("CV-primary background with limited NLP/IR experience")
+        
     if item.get("has_credibility_concern") and item.get("credibility_warning_skills"):
-        concerns.append(f"low assessment in {item['credibility_warning_skills'][0]}")
-    
+        concerns.append(f"assessment score concern in {item['credibility_warning_skills'][0]}")
+        
     if item.get("has_salary_inversion", False):
-        concerns.append("salary range data concern")
+        concerns.append("data discrepancy in expected salary bounds")
         
-    # Flag high notice period for top candidates
-    if notice > 90 and rank <= 30:
-        concerns.append(f"{notice}-day notice period")
+    if notice > 90:
+        concerns.append(f"extended notice period ({notice} days)")
         
-    # Flag location friction for top candidates not in target cities
-    is_target_city = any(c in loc_lower for c in ["pune", "noida", "delhi", "gurugram", "gurgaon", "hyderabad", "mumbai"])
-    country_lower = profile.get("country", "").lower()
-    if not is_target_city and country_lower != "india" and rank <= 20:
-        concerns.append(f"based outside India ({profile.get('location', 'unknown')})")
-        
-    # Flag low activity for top candidates
     last_active = signals.get("last_active_date", "")
     if last_active:
         try:
             active_d = datetime.date.fromisoformat(last_active)
             days_inactive = (reference_date - active_d).days
-            if days_inactive > 180 and rank <= 50:
-                concerns.append(f"inactive for {days_inactive} days")
+            if days_inactive > 180:
+                concerns.append(f"inactive on platform for {days_inactive} days")
         except Exception:
             pass
+            
+    if item.get("has_skills_stuffing_concern", False):
+        concerns.append("potential skill stuffing (high claimed skills, low career description mentions)")
     
-    engagement_str = ""
+    # Sentence assembly
+    sent1 = f"Currently {title} at {company} ({exp:.1f} yrs exp) {company_context}."
+    sent2 = f"Demonstrates {alignment} leveraging {skills_str}."
+    
+    logistics = f"{avail_str.capitalize()}."
     if strengths:
-        engagement_str += f" Signals: {'; '.join(strengths[:2])}."
+        logistics += f" Strong signals: {', '.join(strengths)}."
     if concerns:
-        engagement_str += f" Note: {', '.join(concerns[:2])}."
-    
-    # Deterministic template selection using candidate ID & fingerprint
-    cid_digits = re.findall(r'\d+', item["candidate_id"])
-    cid_num = int(cid_digits[0]) if cid_digits else 0
-    
-    variation_seed = (
-        cid_num +
-        int(exp) * 5 +
-        len(matched_ir) * 7 +
-        len(matched_ml) * 3 +
-        (11 if signals.get("open_to_work_flag") else 0)
-    )
-    
-    # 5 templates per tier for maximum variation
-    if rank <= 10:
-        phrases = [
-            f"Rank {rank}: {title} at {company} ({exp:.0f} yrs) with {alignment}. Core skills include {tech_str}, {company_context}. {avail_str}.{engagement_str}",
-            f"Top-tier match at rank {rank}. {exp:.0f}-year veteran currently {title} at {company}, demonstrating {alignment} via {tech_str}. {avail_str} {company_context}.{engagement_str}",
-            f"Exceptional fit (rank {rank}). {title} at {company} brings {exp:.0f} years and {alignment}. Proficient in {tech_str}; {avail_str}.{engagement_str}",
-            f"Rank {rank} candidate: {exp:.0f} years as {title} at {company} {company_context}. Shows {alignment} with expertise in {tech_str}. {avail_str}.{engagement_str}",
-            f"Premier candidate at rank {rank}. Currently {title} at {company} ({exp:.0f} yrs), {company_context}. Demonstrates {tech_str} proficiency and {alignment}. {avail_str}.{engagement_str}"
-        ]
-    elif rank <= 50:
-        phrases = [
-            f"Rank {rank}: {title} at {company} with {exp:.0f} years showing {alignment}. Skills: {tech_str}. {avail_str} {company_context}.{engagement_str}",
-            f"Strong match at rank {rank}. {exp:.0f}-year {title} at {company} {company_context}, with {alignment} via {tech_str}. {avail_str}.{engagement_str}",
-            f"Candidate ranked {rank} brings {exp:.0f} years as {title} at {company}. Shows {alignment}; proficient in {tech_str}. {avail_str}.{engagement_str}",
-            f"Solid alignment at rank {rank}. {title} at {company} ({exp:.0f} yrs) demonstrates {alignment}. Key skills: {tech_str}. {avail_str}.{engagement_str}",
-            f"Rank {rank}: {exp:.0f}-year {title} at {company}. Relevant skills include {tech_str}, showing {alignment}. {avail_str} {company_context}.{engagement_str}"
-        ]
-    else:
-        phrases = [
-            f"Rank {rank}: {title} at {company} ({exp:.0f} yrs) with {alignment}. Skills: {tech_str}. {avail_str}.{engagement_str}",
-            f"Viable candidate at rank {rank}. {exp:.0f}-year {title} at {company} showing {alignment} through {tech_str}. {avail_str}.{engagement_str}",
-            f"Rank {rank} match. Currently {title} at {company} with {exp:.0f} years. Demonstrates {alignment}; knows {tech_str}. {avail_str}.{engagement_str}",
-            f"Candidate at rank {rank}: {title} at {company} ({exp:.0f} yrs). Shows {alignment} with {tech_str} competency. {avail_str}.{engagement_str}",
-            f"Rank {rank}: {exp:.0f} years as {title} at {company}. Has {alignment} and skills in {tech_str}. {avail_str} {company_context}.{engagement_str}"
-        ]
+        logistics += f" Note: {'; '.join(concerns)}."
         
-    reasoning = phrases[variation_seed % len(phrases)]
+    reasoning = f"{sent1} {sent2} {logistics}"
     
     words = reasoning.split()
     if len(words) > 80:
-        sentences = reasoning.split(". ")
-        truncated = ""
-        for sent in sentences:
-            candidate_str = (truncated + ". " + sent).strip(". ")
-            if len(candidate_str.split()) <= 80:
-                truncated = candidate_str
-            else:
-                break
-        reasoning = truncated.rstrip(".") + "." if truncated else " ".join(words[:78]) + "."
-    else:
-        reasoning = reasoning.rstrip(".") + "."
+        reasoning = " ".join(words[:78]) + "..."
         
     return reasoning
 
@@ -582,13 +533,32 @@ def main():
         # Dimension B: Information Retrieval (IR) & Search / RecSys
         ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "re-ranking", "information retrieval", "recommendation", "recommendation systems", "recommend", "recommender", "recsys", "collaborative filtering", "matrix factorization", "search engine", "search feature", "search system", "search pipeline", "retrieval system", "retrieval pipeline"}
         ir_matches_skills = skills_lower.intersection(ir_search_skills)
-        ir_matches_career = any(kw in career_text for kw in ["vector search", "semantic search", "hybrid retrieval", "hybrid search", "information retrieval", "reranking", "re-ranking", "learning to rank", "recommendation system", "recommendation-style", "recommender", "recommendation", "recommend", "collaborative filtering", "matrix factorization", "recsys", "pinecone", "weaviate", "qdrant", "milvus", "faiss", "elasticsearch", "opensearch", "search engine", "search feature", "search system", "search pipeline", "retrieval system", "retrieval pipeline"])
+        ir_keywords = [
+            "vector search", "semantic search", "hybrid retrieval", "hybrid search", "information retrieval", 
+            "reranking", "re-ranking", "learning to rank", "recommendation system", "recommendation-style", 
+            "recommender", "recommendation", "recommend", "collaborative filtering", "matrix factorization", 
+            "recsys", "pinecone", "weaviate", "qdrant", "milvus", "faiss", "elasticsearch", "opensearch", 
+            "search engine", "search feature", "search system", "search pipeline", "retrieval system", 
+            "retrieval pipeline", "approximate nearest neighbor", "ann index", "similarity search", 
+            "dense retrieval", "inverted index", "personalized feed", "feed ranking", "news feed", 
+            "content ranking", "item similarity", "user-item", "affinity score", "relevance scoring", 
+            "ltr", "xgboost ranking", "lambdamart", "pointwise", "pairwise", "listwise", 
+            "candidate generation", "two-tower", "dual encoder", "siamese network", "triplet loss"
+        ]
+        ir_matches_career = any(kw in career_text for kw in ir_keywords)
         has_ir_search = len(ir_matches_skills) >= 2 or ir_matches_career
         
         # Dimension C: Evaluation & Metrics
         eval_skills = {"ndcg", "mrr", "map", "mean average precision", "a/b testing", "ab testing", "offline evaluation", "online evaluation", "evaluation framework", "evaluation metrics", "ranking metric", "retrieval metric", "precision at", "recall at", "ndcg@", "mrr@", "map@"}
         eval_matches_skills = skills_lower.intersection(eval_skills)
-        eval_matches_career = any(kw in career_text for kw in ["ndcg", "mrr", "mean average precision", "a/b test", "ab test", "offline evaluation", "online evaluation", "eval framework", "evaluation framework", "ranking metric", "retrieval metric", "precision at", "recall at", "ndcg@", "mrr@", "map@"])
+        eval_keywords = [
+            "ndcg", "mrr", "map", "mean average precision", "a/b test", "ab test", "a/b testing", "ab testing", 
+            "offline evaluation", "online evaluation", "eval framework", "evaluation framework", "ranking metric", 
+            "retrieval metric", "precision at", "recall at", "ndcg@", "mrr@", "map@", "precision recall", 
+            "hit rate", "click-through rate", "ctr", "engagement metric", "online experiment", "holdout evaluation", 
+            "ranking quality", "relevance judgment", "human evaluation", "user study", "implicit feedback"
+        ]
+        eval_matches_career = any(kw in career_text for kw in eval_keywords)
         has_eval = len(eval_matches_skills) >= 1 or eval_matches_career
         
         # Sub-scores (IDF-weighted: rare skill matches count more)
@@ -797,6 +767,40 @@ def main():
         # 1.7 Junior Cap
         if years_exp < 2.0:
             fit_score = min(65.0, fit_score)
+
+        # 1.7.5 CV/Speech/Robotics Specialization Penalty
+        # The JD says: "People whose primary expertise is computer vision, speech, or robotics 
+        # without significant NLP/IR exposure. We respect your work but you'd be re-learning fundamentals here."
+        cv_speech_primary_titles = [
+            "computer vision", "cv engineer", "speech engineer", "speech scientist", 
+            "asr engineer", "tts engineer", "robotics engineer", "perception engineer", 
+            "autonomous driving", "slam engineer"
+        ]
+        cv_speech_primary_skills = {
+            "computer vision", "object detection", "image classification", "image segmentation", 
+            "speech recognition", "asr", "tts", "text to speech", "speech synthesis", 
+            "speech processing", "optical flow", "pose estimation", "3d vision", "lidar", "ros", "robotics"
+        }
+        
+        title_lower = current_title.lower()
+        is_cv_speech_primary = (
+            any(kw in title_lower for kw in cv_speech_primary_titles) or
+            len(skills_lower.intersection(cv_speech_primary_skills)) >= 3
+        )
+        
+        # Check if they have compensating NLP/IR signals
+        career_titles_lower = [job.get("title", "").lower() for job in career]
+        has_nlp_ir_title = any(any(kw in t for kw in ["nlp", "search", "retrieval", "ranking", "re-ranking", "information retrieval", "recsys"]) for t in career_titles_lower)
+        has_generic_mle_title = any(any(kw in t for kw in ["machine learning", "ml engineer", "ai engineer", "data scientist", "applied scientist", "researcher"]) for t in career_titles_lower)
+        
+        has_nlp_ir_compensation = False
+        if has_nlp_ir_title:
+            has_nlp_ir_compensation = True
+        elif has_generic_mle_title and (len(ir_matches_skills) >= 2 or len(skills_lower.intersection({"nlp", "natural language processing", "information retrieval"})) >= 1):
+            has_nlp_ir_compensation = True
+            
+        if is_cv_speech_primary and not has_nlp_ir_compensation:
+            fit_score *= 0.50  # 50% penalty per JD criteria
             
         # 1.8 Job-Hopping & Title-Chasing Penalty (Relaxed thresholds for premium tech startup tenures)
         if len(career) >= 3:
@@ -821,6 +825,19 @@ def main():
         if sal_min > 0 and sal_max > 0 and sal_min > sal_max:
             has_salary_inversion = True
             fit_score *= 0.95  # 5% penalty for data quality concern
+
+        # 1.9.5 Skills Credibility check (Keyword Stuffing Defense)
+        # If a candidate lists many JD-relevant skills but very few appear in actual career history descriptions
+        has_skills_stuffing_concern = False
+        if jd_matching_count >= 6:
+            skills_in_career_text = sum(
+                1 for sk in skills_lower.intersection(jd_relevant_skills)
+                if sk in career_text
+            )
+            credibility_ratio = skills_in_career_text / jd_matching_count
+            if credibility_ratio < 0.25:
+                fit_score *= 0.75  # 25% penalty for unvalidated/overly stuffed skill lists
+                has_skills_stuffing_concern = True
                 
         # --- 2. AVAILABILITY MULTIPLIER ---
         
@@ -942,6 +959,29 @@ def main():
             search_boost = 1.0 + 0.05 * min(1.0, max(0.0, log_ratio))
             beh_modifier *= search_boost
 
+        # Active job seeking signal (applications_submitted_30d)
+        apps_30d = signals.get("applications_submitted_30d", 0)
+        if apps_30d >= 3:
+            beh_modifier *= 1.05   # Active job seeker boost
+        elif apps_30d == 0 and not signals.get("open_to_work_flag", False):
+            beh_modifier *= 0.95   # Passive candidate soft penalty
+
+        # Profile legitimacy/verification signals (verified_email, verified_phone, linkedin_connected)
+        if not signals.get("verified_email", True):
+            beh_modifier *= 0.95   # Unverified email soft penalty
+        if not signals.get("verified_phone", True):
+            beh_modifier *= 0.97   # Unverified phone soft penalty
+        if not signals.get("linkedin_connected", True):
+            beh_modifier *= 0.98   # Missing LinkedIn integration soft penalty
+
+        # Social proof / endorsements (endorsements_received vs connection_count)
+        endorsements = signals.get("endorsements_received", 0)
+        connections = signals.get("connection_count", 0)
+        if endorsements >= 50:
+            beh_modifier *= 1.03   # High endorsement boost
+        elif endorsements == 0 and connections >= 100:
+            beh_modifier *= 0.97   # Connections but zero endorsements soft penalty
+
         avail_multiplier = loc_modifier * notice_modifier * act_modifier * beh_modifier
         
         final_score = fit_score * avail_multiplier
@@ -973,9 +1013,21 @@ def main():
                     disqualification_reason = f"Skill '{s.get('name')}' duration exceeds experience by >3 years"
                     break
                     
-        # Rule 3.3: Title vs Skills Mismatch
+        # Rule 3.3: Title vs Skills Mismatch (Expanded non-tech management checks)
         if not is_honeypot:
-            if current_title.lower() in non_tech_titles:
+            non_tech_broad = [
+                "manager", "director", "vp", "vice president", "business", "product manager", "project manager",
+                "program manager", "account", "sales", "marketing", "hr", "finance", "operations", "legal",
+                "recruiting", "talent", "customer success", "ceo", "cfo", "coo", "founder", "executive", "admin", "office"
+            ]
+            tech_compensating = ["ml", "ai", "machine learning", "data", "engineering", "research", "tech", "software", "developer", "architect"]
+            
+            is_non_tech_mgmt = (
+                any(kw in title_lower for kw in non_tech_broad) and
+                not any(kw in title_lower for kw in tech_compensating)
+            )
+            
+            if current_title.lower() in non_tech_titles or is_non_tech_mgmt:
                 cand_skills_lower = {s.get("name", "").lower() for s in skills}
                 has_deep_ml = len(cand_skills_lower.intersection(deep_ml_keywords)) >= 4
                 if has_deep_ml:
@@ -1021,7 +1073,10 @@ def main():
             "has_ml_domain_company": has_ml_domain_company,
             "ml_domain_company_name": ml_domain_company_name,
             "jd_matching_count": jd_matching_count,
-            "skill_concentration": jd_matching_count / total_skill_count if total_skill_count > 0 else 0.0
+            "skill_concentration": jd_matching_count / total_skill_count if total_skill_count > 0 else 0.0,
+            "is_cv_speech_primary": is_cv_speech_primary,
+            "has_nlp_ir_compensation": has_nlp_ir_compensation,
+            "has_skills_stuffing_concern": has_skills_stuffing_concern
         })
 
     # Sort final list of 1,000 candidates:

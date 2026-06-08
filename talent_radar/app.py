@@ -524,6 +524,58 @@ async def api_upload(file: UploadFile = File(...)):
             if not isinstance(item, dict):
                 raise HTTPException(status_code=400, detail=f"Candidate at index {idx} must be an object.")
                 
+            # If item matches official nested schema, normalize it to internal sandbox schema
+            if "profile" in item and "redrob_signals" in item:
+                try:
+                    profile = item.get("profile", {})
+                    career = item.get("career_history", [])
+                    skills = item.get("skills", [])
+                    signals = item.get("redrob_signals", {})
+                    
+                    # Construct resume_text
+                    resume_parts = []
+                    if profile.get("current_title"):
+                        resume_parts.append(profile["current_title"])
+                    if profile.get("headline"):
+                        resume_parts.append(profile["headline"])
+                    if profile.get("summary"):
+                        resume_parts.append(profile["summary"])
+                    if skills:
+                        resume_parts.append("Skills: " + ", ".join([s.get("name", "") for s in skills if s.get("name")]))
+                    
+                    career_parts = []
+                    for job in career:
+                        j_title = job.get("title", "")
+                        j_company = job.get("company", "")
+                        j_desc = job.get("description", "")
+                        if j_title:
+                            career_parts.append(f"{j_title} at {j_company or 'Company'}")
+                        if j_desc:
+                            career_parts.append(j_desc)
+                    if career_parts:
+                        resume_parts.append("Experience: " + ". ".join(career_parts))
+                    
+                    item = {
+                        "candidate_id": item.get("candidate_id"),
+                        "name": profile.get("anonymized_name", "Unknown Candidate"),
+                        "current_title": profile.get("current_title", "Software Engineer"),
+                        "resume_text": " ".join(resume_parts),
+                        "years_experience": float(profile.get("years_of_experience", 1.0)),
+                        "skills_listed": [s.get("name") for s in skills if s.get("name")],
+                        "career_history": [
+                            {
+                                "title": job.get("title", "Developer"),
+                                "company": job.get("company", "Company"),
+                                "start_date": job.get("start_date", "2020-01-01"),
+                                "end_date": job.get("end_date")
+                            }
+                            for job in career
+                        ],
+                        "last_active": signals.get("last_active_date")
+                    }
+                except Exception as map_err:
+                    raise HTTPException(status_code=400, detail=f"Failed to map nested profile at index {idx}: {str(map_err)}")
+
             for key in required_keys:
                 if key not in item:
                     raise HTTPException(status_code=400, detail=f"Candidate at index {idx} is missing required field '{key}'.")

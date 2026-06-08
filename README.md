@@ -25,16 +25,24 @@ graph TD
 - Python 3.10+ (tested on Python 3.13.0)
 - All requirements listed in `requirements.txt`
 
-Install the dependencies:
-```bash
-pip install -r requirements.txt
-```
+### Pre-computation (One-time Setup)
+The SentenceTransformer bi-encoder and cross-encoder models must be cached locally to allow the ranker to run completely offline.
+
+1. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Download and cache the models locally** (requires internet access on first run, downloads ~300MB of model weights to `./model_cache/`):
+   ```bash
+   python download_model.py
+   ```
 
 ### Reproducing the Submission CSV
 We separate the precomputing of the BM25 index from the ranking process to ensure the ranking step runs instantly.
 
-1. **Build BM25 Index (Precompute)**:
-   The ranker will automatically build a precomputed index `bm25_index_full.pkl` if it does not exist on disk when you run the pipeline. Alternatively, running the ranker the first time will generate it:
+1. **Build BM25 Index & Run Ranker**:
+   The ranker will automatically build a precomputed index `bm25_index_full.pkl` if it does not exist on disk on the first run:
    ```bash
    python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv
    ```
