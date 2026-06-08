@@ -1034,6 +1034,62 @@ def main():
             if credibility_ratio < 0.25:
                 fit_score *= 0.75  # 25% penalty for unvalidated/overly stuffed skill lists
                 has_skills_stuffing_concern = True
+
+        # Rule 3.7: Pure Research Environment Disqualifier (JD Criteria)
+        is_pure_research = False
+        if career:
+            has_production_role = False
+            has_research_role = False
+            for job in career:
+                title_j = job.get("title", "").lower()
+                comp_j = job.get("company", "").lower()
+                
+                is_res_job = any(kw in title_j for kw in ["researcher", "research scientist", "postdoc", "phd student", "fellow", "academic", "scholar"]) or \
+                             any(kw in comp_j for kw in ["university", "college", "institute of technology", "research lab", "academy of sciences"])
+                             
+                is_prod_job = any(kw in title_j for kw in ["software engineer", "backend engineer", "data engineer", "systems engineer", "ml engineer", "machine learning engineer", "production engineer", "mle", "developer"]) and not \
+                              any(kw in comp_j for kw in ["university", "college", "institute of technology"])
+                
+                if is_prod_job:
+                    has_production_role = True
+                if is_res_job:
+                    has_research_role = True
+
+            if has_research_role and not has_production_role:
+                is_pure_research = True
+
+        # Rule 3.8: LangChain/OpenAI Wrapper-Only AI Experience Penalty/Disqualifier (JD Criteria)
+        is_wrapper_only = False
+        has_wrapper_skills = any(sk in skills_lower for sk in ["langchain", "llamaindex", "openai", "prompt engineering", "gpt-4", "chatgpt"])
+        has_deep_ml_or_legacy = any(sk in skills_lower for sk in ["pytorch", "tensorflow", "keras", "jax", "cuda", "triton", "scikit-learn", "sklearn", "pandas", "numpy", "opencv", "nltk", "spacy", "xgboost", "lightgbm"])
+        
+        # Check max duration of ML skills
+        ml_durations = [s.get("duration_months", 0) for s in skills if s.get("name", "").lower() in ml_dl_skills]
+        max_ml_duration = max(ml_durations) if ml_durations else 0
+        
+        if has_wrapper_skills and not has_deep_ml_or_legacy and max_ml_duration <= 12:
+            is_wrapper_only = True
+
+        # Rule 3.9: Tech Lead / Architect Coding Recency Heavier Penalty
+        is_mgmt_role_over_18m = False
+        if is_mgmt and career:
+            current_job = career[0]
+            if current_job.get("is_current") and current_job.get("duration_months", 0) > 18:
+                is_mgmt_role_over_18m = True
+
+        # Rule 3.10: Closed-Source Proprietary systems check
+        is_closed_source_only = False
+        github_score = signals.get("github_activity_score", -1)
+        if years_exp >= 5.0 and github_score == -1 and not has_publications:
+            is_closed_source_only = True
+
+        # Apply Fit Score multipliers
+        if is_wrapper_only:
+            fit_score *= 0.20
+        if is_mgmt_role_over_18m:
+            fit_score *= 0.30
+        if is_closed_source_only:
+            fit_score *= 0.80
                 
         # --- 2. AVAILABILITY MULTIPLIER ---
         
@@ -1049,22 +1105,22 @@ def main():
         if is_jd_named_cities:
             loc_modifier = 1.0
         elif is_other_tier1:
-            loc_modifier = 0.90 if willing_reloc else 0.72
+            loc_modifier = 0.90 if willing_reloc else 0.10
         elif country_lower == "india" or "india" in loc_lower:
-            loc_modifier = 0.85 if willing_reloc else 0.65
+            loc_modifier = 0.85 if willing_reloc else 0.10
         else:  # outside India
-            loc_modifier = 0.50 if willing_reloc else 0.30
+            loc_modifier = 0.50 if willing_reloc else 0.05
             
         # 2.2 Notice Period Modifier
         notice_days = signals.get("notice_period_days", 0)
         if notice_days <= 30:
-            notice_modifier = 1.0
+            notice_modifier = 1.00
         elif notice_days <= 60:
             notice_modifier = 0.97
         elif notice_days <= 90:
-            notice_modifier = 0.85
+            notice_modifier = 0.80
         else:
-            notice_modifier = 0.65
+            notice_modifier = 0.50
             
         # 2.3 Activity Modifier
         last_active_str = signals.get("last_active_date", "")
@@ -1264,7 +1320,10 @@ def main():
                     disqualification_reason = f"Expert skill '{s.get('name')}' claimed with zero duration"
                     break
 
-        if is_honeypot:
+        if is_pure_research:
+            disqualification_reason = "Pure research environment without production deployment"
+
+        if is_honeypot or is_pure_research:
             final_score = 0.0
 
         # --- 4. CREDIBILITY CONCERNS ---
