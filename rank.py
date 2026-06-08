@@ -403,10 +403,16 @@ def generate_candidate_reasoning(rank, item, reference_date):
     # Strip double spaces
     reasoning = re.sub(r'\s+', ' ', reasoning).strip()
     
-    # Hard truncation to ensure length limits
+    # Graceful truncation to ensure length limits (max 70 words, ending at complete sentence)
     words = reasoning.split()
-    if len(words) > 75:
-        reasoning = " ".join(words[:73]) + "..."
+    if len(words) > 70:
+        truncated = " ".join(words[:70])
+        # Find last period or exclamation/question mark to cut at a complete sentence
+        last_sentence_end = max(truncated.rfind('.'), truncated.rfind('!'), truncated.rfind('?'))
+        if last_sentence_end > 30:  # Ensure we have a reasonable sentence length
+            reasoning = truncated[:last_sentence_end + 1]
+        else:
+            reasoning = truncated + "..."
         
     return reasoning
 
@@ -1295,10 +1301,14 @@ def main():
                 is_honeypot = True
                 disqualification_reason = "Fabricated profile completeness with zero response rates"
 
-        # Rule 3.5: Company Foundation Date Violation (Krutrim/Sarvam AI check)
+        # Rule 3.5: Company Foundation Date Violation (Krutrim/Sarvam/Mistral/xAI/Perplexity/Cognition check)
         if not is_honeypot:
             krutrim_found = datetime.date(2023, 4, 1)
             sarvam_found = datetime.date(2023, 7, 1)
+            mistral_found = datetime.date(2023, 4, 1)
+            xai_found = datetime.date(2023, 3, 1)
+            perplexity_found = datetime.date(2022, 8, 1)
+            cognition_found = datetime.date(2023, 11, 1)
             for job in career:
                 comp_lower = job.get("company", "").strip().lower()
                 s_date = parse_date(job.get("start_date"))
@@ -1311,6 +1321,22 @@ def main():
                         is_honeypot = True
                         disqualification_reason = f"Sarvam AI start date {s_date} before foundation July 2023"
                         break
+                    elif "mistral" in comp_lower and s_date < mistral_found:
+                        is_honeypot = True
+                        disqualification_reason = f"Mistral start date {s_date} before foundation April 2023"
+                        break
+                    elif "xai" in comp_lower and s_date < xai_found:
+                        is_honeypot = True
+                        disqualification_reason = f"xAI start date {s_date} before foundation March 2023"
+                        break
+                    elif "perplexity" in comp_lower and s_date < perplexity_found:
+                        is_honeypot = True
+                        disqualification_reason = f"Perplexity start date {s_date} before foundation August 2022"
+                        break
+                    elif "cognition" in comp_lower and s_date < cognition_found:
+                        is_honeypot = True
+                        disqualification_reason = f"Cognition AI start date {s_date} before foundation November 2023"
+                        break
 
         # Rule 3.6: Expert Proficiency with Zero Duration
         if not is_honeypot:
@@ -1318,6 +1344,28 @@ def main():
                 if s.get("proficiency", "").lower() == "expert" and s.get("duration_months", 0) == 0:
                     is_honeypot = True
                     disqualification_reason = f"Expert skill '{s.get('name')}' claimed with zero duration"
+                    break
+
+        # Rule 3.7: Technology Release Date Mismatch
+        if not is_honeypot:
+            tech_limits = {
+                "langchain": 45,       # Founded late 2022 (max ~3.7 years)
+                "llamaindex": 45,      # Founded late 2022 (max ~3.7 years)
+                "qdrant": 65,          # Founded 2021 (max ~5.4 years)
+                "pinecone": 84,        # Founded 2019 (max ~7 years)
+                "milvus": 84,          # Founded 2019 (max ~7 years)
+                "triton": 85,          # Founded 2019 (max ~7 years)
+                "pytorch": 120,        # Founded 2016 (max ~10 years)
+            }
+            for s in skills:
+                name_lower = s.get("name", "").lower()
+                dur = s.get("duration_months", 0)
+                for tech, limit in tech_limits.items():
+                    if tech in name_lower and dur > limit:
+                        is_honeypot = True
+                        disqualification_reason = f"Skill '{s.get('name')}' duration {dur}mo exceeds launch limit of {limit}mo"
+                        break
+                if is_honeypot:
                     break
 
         if is_pure_research:
