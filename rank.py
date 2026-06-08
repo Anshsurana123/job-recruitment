@@ -394,7 +394,9 @@ def main():
         "vector database, RAG, retrieval, ranking, search, Pinecone, Weaviate, Qdrant, Milvus, FAISS, "
         "OpenSearch, Elasticsearch, evaluation framework, NDCG, MRR, MAP, python, product company, "
         "information retrieval, recommendation system, semantic search, hybrid retrieval, dense retrieval, "
-        "reranking, learning to rank, A/B testing, offline evaluation"
+        "reranking, learning to rank, A/B testing, offline evaluation, "
+        "collaborative filtering, matrix factorization, recommendation-style, recommender, search features, search pipeline, retrieval pipeline, "
+        "data scientist, applied scientist, ml engineer, machine learning engineer, recommendation systems engineer, search engineer"
     )
     query_tokens = tokenize(query_text)
     
@@ -420,12 +422,35 @@ def main():
     print(f"Loading local SentenceTransformer model from {model_cache_path}...")
     model = SentenceTransformer(str(model_cache_path))
     
-    # Extract candidate text representations dynamically for only the top 1,000 candidates
+    # Extract candidate text representations with truncated career histories dynamically for Stage 1.5
     print("Extracting text blocks for top 1,000 candidates...")
     top_texts = []
     for score, cand in top_1000_lexical:
         fields = build_candidate_fields(cand)
-        text = f"Current Title: {fields['title_headline']}. Skills: {fields['skills']}. Summary: {fields['summary']}. Past Titles: {fields['career_titles']}."
+        career = cand.get("career_history", [])
+        recent_roles = []
+        for job in career[:3]:
+            job_title = job.get("title", "")
+            company = job.get("company", "")
+            job_desc = job.get("description", "")
+            
+            role_parts = []
+            if job_title:
+                if company:
+                    role_parts.append(f"{job_title} at {company}")
+                else:
+                    role_parts.append(job_title)
+            
+            if job_desc:
+                # Clean up description whitespace and take first 150 characters
+                clean_desc = re.sub(r'\s+', ' ', job_desc).strip()
+                role_parts.append(f"({clean_desc[:150]}...)")
+                
+            if role_parts:
+                recent_roles.append(" ".join(role_parts))
+                
+        career_str = ". ".join(recent_roles)
+        text = f"Current Title: {fields['title_headline']}. Skills: {fields['skills']}. Summary: {fields['summary']}. Recent: {career_str}."
         top_texts.append(text)
         
     print("Encoding query and top 1,000 candidates dynamically on CPU...")
@@ -549,21 +574,21 @@ def main():
         ])
         
         # Dimension A: Core ML & Deep Learning
-        ml_dl_skills = {"pytorch", "tensorflow", "keras", "jax", "cuda", "triton", "deep learning", "neural networks", "llms", "large language models", "transformers", "fine-tuning", "peft", "lora", "qlora", "bert", "gpt", "cnn", "rnn"}
+        ml_dl_skills = {"pytorch", "tensorflow", "keras", "jax", "cuda", "triton", "deep learning", "neural networks", "llms", "large language models", "transformers", "fine-tuning", "peft", "lora", "qlora", "bert", "gpt", "cnn", "rnn", "sentence-transformer", "sentence transformer", "embedding", "embeddings"}
         ml_dl_matches_skills = skills_lower.intersection(ml_dl_skills)
-        ml_dl_matches_career = any(kw in career_text for kw in ["pytorch", "deep learning", "neural network", "transformer", "fine-tuning", "lora", "llm"])
+        ml_dl_matches_career = any(kw in career_text for kw in ["pytorch", "deep learning", "neural network", "transformer", "fine-tuning", "lora", "llm", "sentence-transformer", "sentence transformer", "embedding", "embeddings"])
         has_ml_dl = len(ml_dl_matches_skills) >= 2 or ml_dl_matches_career
         
         # Dimension B: Information Retrieval (IR) & Search / RecSys
-        ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "information retrieval", "recommendation", "recommendation systems", "recsys", "collaborative filtering"}
+        ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "re-ranking", "information retrieval", "recommendation", "recommendation systems", "recommend", "recommender", "recsys", "collaborative filtering", "matrix factorization", "search engine", "search feature", "search system", "search pipeline", "retrieval system", "retrieval pipeline"}
         ir_matches_skills = skills_lower.intersection(ir_search_skills)
-        ir_matches_career = any(kw in career_text for kw in ["vector search", "semantic search", "hybrid retrieval", "hybrid search", "information retrieval", "reranking", "learning to rank", "recommendation system", "recsys", "pinecone", "weaviate", "qdrant", "milvus", "faiss", "elasticsearch", "opensearch"])
+        ir_matches_career = any(kw in career_text for kw in ["vector search", "semantic search", "hybrid retrieval", "hybrid search", "information retrieval", "reranking", "re-ranking", "learning to rank", "recommendation system", "recommendation-style", "recommender", "recommendation", "recommend", "collaborative filtering", "matrix factorization", "recsys", "pinecone", "weaviate", "qdrant", "milvus", "faiss", "elasticsearch", "opensearch", "search engine", "search feature", "search system", "search pipeline", "retrieval system", "retrieval pipeline"])
         has_ir_search = len(ir_matches_skills) >= 2 or ir_matches_career
         
         # Dimension C: Evaluation & Metrics
-        eval_skills = {"ndcg", "mrr", "map", "mean average precision", "a/b testing", "ab testing", "offline evaluation", "online evaluation", "evaluation framework", "evaluation metrics"}
+        eval_skills = {"ndcg", "mrr", "map", "mean average precision", "a/b testing", "ab testing", "offline evaluation", "online evaluation", "evaluation framework", "evaluation metrics", "ranking metric", "retrieval metric", "precision at", "recall at", "ndcg@", "mrr@", "map@"}
         eval_matches_skills = skills_lower.intersection(eval_skills)
-        eval_matches_career = any(kw in career_text for kw in ["ndcg", "mrr", "mean average precision", "a/b test", "ab test", "offline evaluation", "online evaluation", "eval framework", "evaluation framework"])
+        eval_matches_career = any(kw in career_text for kw in ["ndcg", "mrr", "mean average precision", "a/b test", "ab test", "offline evaluation", "online evaluation", "eval framework", "evaluation framework", "ranking metric", "retrieval metric", "precision at", "recall at", "ndcg@", "mrr@", "map@"])
         has_eval = len(eval_matches_skills) >= 1 or eval_matches_career
         
         # Sub-scores (IDF-weighted: rare skill matches count more)
@@ -762,20 +787,27 @@ def main():
         assessment_bonus = max(-10.0, min(6.0, assessment_bonus))
         fit_score += assessment_bonus
         
+        # 1.6.8 Secret Gem Boost (Compensate plain-language MLEs for low semantic buzzword similarity)
+        is_relevant_title = any(t in current_title.lower() for t in ["ai", "machine learning", "mle", "data scientist", "applied scientist", "search engineer", "recommendation"])
+        has_search_rec = any(kw in career_text for kw in ["recommendation", "recommend", "collaborative filtering", "matrix factorization", "search", "ranking", "re-ranking", "information retrieval"])
+        is_gem = (4.0 <= years_exp <= 10.0) and is_relevant_title and has_ml_domain_company and has_search_rec
+        if is_gem:
+            fit_score = min(100.0, fit_score + 12.0)
+            
         # 1.7 Junior Cap
         if years_exp < 2.0:
             fit_score = min(65.0, fit_score)
             
-        # 1.8 Job-Hopping & Title-Chasing Penalty
+        # 1.8 Job-Hopping & Title-Chasing Penalty (Relaxed thresholds for premium tech startup tenures)
         if len(career) >= 3:
             recent_jobs = career[:3]
             total_months = sum(job.get("duration_months", 0) for job in recent_jobs)
             avg_tenure = total_months / len(recent_jobs)
-            if avg_tenure < 18.0:
+            if avg_tenure < 12.0:
                 fit_score *= 0.75
-            elif avg_tenure < 24.0:
+            elif avg_tenure < 18.0:
                 fit_score *= 0.85
-            elif avg_tenure < 36.0:
+            elif avg_tenure < 24.0:
                 fit_score *= 0.95
 
         # 1.9 Salary Range Inversion Penalty (Data Quality)
@@ -1020,13 +1052,28 @@ def main():
             summary = profile.get("summary", "")
             skills_str = ", ".join(s.get("name", "") for s in skills_list[:20])
             
-            # Include recent career context for richer signal
+            # Include recent career context with truncated job descriptions for richer semantic matching
             recent_roles = []
             for job in career[:3]:
                 job_title = job.get("title", "")
-                company = job.get("company_name", "")
+                company = job.get("company", "")
+                job_desc = job.get("description", "")
+                
+                role_parts = []
                 if job_title:
-                    recent_roles.append(f"{job_title} at {company}" if company else job_title)
+                    if company:
+                        role_parts.append(f"{job_title} at {company}")
+                    else:
+                        role_parts.append(job_title)
+                
+                if job_desc:
+                    # Clean up description whitespace and take first 150 characters
+                    clean_desc = re.sub(r'\s+', ' ', job_desc).strip()
+                    role_parts.append(f"({clean_desc[:150]}...)")
+                
+                if role_parts:
+                    recent_roles.append(" ".join(role_parts))
+                    
             career_str = ". ".join(recent_roles)
             
             candidate_text = f"{title}. {headline}. {summary}. Skills: {skills_str}. Recent: {career_str}."
@@ -1047,8 +1094,8 @@ def main():
         # Blend: 70% heuristic fit + 30% cross-encoder relevance
         # This preserves our domain-specific signals while leveraging
         # the cross-encoder's superior semantic understanding.
-        ALPHA_FIT = 0.70
-        ALPHA_CE = 0.30
+        ALPHA_FIT = 0.85
+        ALPHA_CE = 0.15
         
         for i, item in enumerate(top_k_pool):
             norm_fit = (item["final_score"] - fit_min) / fit_range
