@@ -1,16 +1,4 @@
 # Core Ranking Dependencies
-pandas
 numpy
-python-dotenv
-requests
 sentence-transformers
 torch
-
-# Core Web Framework (if needed for endpoints)
-fastapi
-uvicorn[standard]
-python-multipart
-pydantic
-pypdf>=3.0.0
-pdfplumber>=0.10.0
-google-genai>=0.1.0

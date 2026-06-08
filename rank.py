@@ -5,9 +5,20 @@ import pickle
 import datetime
 import re
 import argparse
+import random
 from pathlib import Path
 from collections import Counter
 import numpy as np
+
+# Set random seeds for determinism
+random.seed(42)
+np.random.seed(42)
+try:
+    import torch
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
+except ImportError:
+    pass
 
 # Reference date in the hackathon ecosystem
 REFERENCE_DATE = datetime.date(2026, 5, 20)
@@ -150,20 +161,51 @@ def build_candidate_fields(cand):
     
     return fields
 
-def generate_candidate_reasoning(rank_unused, item, reference_date):
+def generate_candidate_reasoning(rank, item, reference_date):
     cand = item["cand"]
     profile = cand.get("profile", {})
     career_list = cand.get("career_history", [])
     skills_list = cand.get("skills", [])
     signals = cand.get("redrob_signals", {})
+    cid = item["candidate_id"]
     
+    # Deterministic index based on candidate ID digits
+    try:
+        cand_num = int(cid.split('_')[1])
+    except Exception:
+        cand_num = random.randint(0, 1000)
+        
     title = profile.get("current_title", "Engineer")
     company = career_list[0].get("company", "Company") if career_list else "Startup"
     exp = profile.get("years_of_experience", 0.0)
     
+    # Check degree & tier
+    edu_list = cand.get("education", [])
+    has_tier1 = any(edu.get("tier") == "tier_1" for edu in edu_list)
+    has_phd = False
+    has_masters = False
+    for edu in edu_list:
+        deg = edu.get("degree", "").lower()
+        if any(d in deg for d in ["ph.d", "phd", "doctor"]):
+            has_phd = True
+        elif any(d in deg for d in ["master", "m.sc", "msc", "m.tech", "mtech", "m.e.", "m.s.", "ms"]) or deg == "me":
+            has_masters = True
+            
+    # Check publications
+    has_publications = False
+    pub_venue = ""
+    career_desc_text = " ".join([job.get("description", "") for job in career_list if job.get("description")])
+    summary_text = profile.get("summary", "")
+    full_text_for_pub = (summary_text + " " + career_desc_text).lower()
+    pub_venues = ["neurips", "icml", "cvpr", "kdd", "acl", "sigir", "recsys"]
+    for venue in pub_venues:
+        if re.search(r'\b' + re.escape(venue) + r'\b', full_text_for_pub):
+            has_publications = True
+            pub_venue = venue.upper()
+            break
+            
+    # Key skills
     skills_lower = {s.get("name", "").lower() for s in skills_list if s.get("name")}
-    
-    # Identify specific core skills for JD alignment context
     ml_dl_skills = {"pytorch", "tensorflow", "jax", "cuda", "triton", "llms", "transformers", "fine-tuning", "peft", "lora", "qlora", "bert", "gpt"}
     ir_search_skills = {"pinecone", "weaviate", "qdrant", "milvus", "faiss", "opensearch", "elasticsearch", "vector search", "semantic search", "hybrid search", "retrieval", "ranking", "reranking", "information retrieval", "rag"}
     eval_skills = {"ndcg", "mrr", "map", "a/b testing", "offline evaluation", "online evaluation", "evaluation framework"}
@@ -172,80 +214,154 @@ def generate_candidate_reasoning(rank_unused, item, reference_date):
     matched_ir = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in ir_search_skills])
     matched_eval = sorted([s.get("name") for s in skills_list if s.get("name", "").lower() in eval_skills])
     
-    # Build dynamic tech alignment text
     key_skills = []
     if matched_ir: key_skills.append(matched_ir[0])
     if matched_ml: key_skills.append(matched_ml[0])
     if matched_eval: key_skills.append(matched_eval[0])
     if len(key_skills) < 2 and len(matched_ir) > 1: key_skills.append(matched_ir[1])
     if len(key_skills) < 2 and len(matched_ml) > 1: key_skills.append(matched_ml[1])
+    skills_str = ", ".join(key_skills) if key_skills else "machine learning"
     
-    skills_str = ", ".join(key_skills) if key_skills else "applied machine learning"
+    # 1. Openers (Sentence 1)
+    s1_options = [
+        f"Currently working as a {title} at {company}, this candidate brings {exp:.1f} years of experience.",
+        f"Brings {exp:.1f} years of total industry experience, currently serving as {title} at {company}.",
+        f"With {exp:.1f} years in the tech ecosystem, they are currently a {title} at {company}.",
+        f"An experienced professional with {exp:.1f} years of tenure, currently acting as {title} at {company}.",
+        f"Currently a {title} at {company} possessing {exp:.1f} years of technical background.",
+        f"Their career history spans {exp:.1f} years, including their current role as {title} at {company}."
+    ]
+    s1 = s1_options[cand_num % len(s1_options)]
     
-    # Determine domain alignment description
-    if matched_ir and matched_ml and matched_eval:
-        alignment = "full-stack ML, search, and evaluation alignment"
-    elif matched_ir and matched_ml:
-        alignment = "strong search systems and ML modeling experience"
-    elif matched_ir:
-        alignment = "specialized search and information retrieval experience"
-    elif matched_ml:
-        alignment = "applied machine learning depth"
+    # 2. Alignment variations (Sentence 2 part 1) - noun phrases for flexible composability
+    align_ml_ir_eval = [
+        "full-stack ML capabilities, search retrieval depth, and ranking metrics experience",
+        "robust expertise in search engines, deep learning models, and offline evaluation frameworks",
+        "integrated skills across search architecture, model fine-tuning, and metric evaluation",
+        "end-to-end alignment with search, recommendation, and relevance metrics requirements"
+    ]
+    align_ml_ir = [
+        "strong search systems expertise and ML model development background",
+        "direct experience with neural models, vector search, and hybrid databases",
+        "demonstrated proficiency in semantic retrieval and applied machine learning",
+        "solid alignment with our core search retrieval and model training needs"
+    ]
+    align_ir = [
+        "specialized search and information retrieval engineering depth",
+        "search engine architecture and retrieval systems focus",
+        "expertise in indexing, vector search, and hybrid query pipelines",
+        "a practical background in search feature development and ranking"
+    ]
+    align_ml = [
+        "applied machine learning and deep learning pipeline depth",
+        "solid model training, fine-tuning, and PyTorch capabilities",
+        "strong foundations in applied ML and deep learning models",
+        "practical experience in machine learning systems and model deployment"
+    ]
+    align_general = [
+        "general software engineering and systems development background",
+        "backend systems delivery and general technical skills",
+        "backend engineering and software architecture capabilities",
+        "solid general programming and systems delivery skills"
+    ]
+    
+    has_ml = len(matched_ml) >= 2 or any(kw in career_desc_text.lower() for kw in ["pytorch", "deep learning"])
+    has_ir = len(matched_ir) >= 2 or any(kw in career_desc_text.lower() for kw in ["vector search", "semantic search", "retrieval"])
+    has_eval = len(matched_eval) >= 1 or any(kw in career_desc_text.lower() for kw in ["ndcg", "mrr", "map", "evaluation"])
+    
+    if has_ml and has_ir and has_eval:
+        align_str = align_ml_ir_eval[cand_num % len(align_ml_ir_eval)]
+    elif has_ml and has_ir:
+        align_str = align_ml_ir[cand_num % len(align_ml_ir)]
+    elif has_ir:
+        align_str = align_ir[cand_num % len(align_ir)]
+    elif has_ml:
+        align_str = align_ml[cand_num % len(align_ml)]
     else:
-        alignment = "general engineering and software delivery"
+        align_str = align_general[cand_num % len(align_general)]
+        
+    s2_options = [
+        f"They demonstrate {align_str} utilizing {skills_str}.",
+        f"Their profile highlights {align_str}, with hands-on {skills_str} experience.",
+        f"They match the JD requirements with {align_str} and knowledge of {skills_str}.",
+        f"They showcase {align_str} alongside exposure to {skills_str}.",
+        f"They bring {align_str} with solid skills in {skills_str}."
+    ]
+    s2 = s2_options[(cand_num + 2) % len(s2_options)]
     
-    # Company context
-    c_sizes = [job.get("company_size", "unknown") for job in career_list]
-    has_startup = any(size in ["1-10", "11-50", "51-200", "201-500"] for size in c_sizes)
-    ml_domain_co = item.get("ml_domain_company_name", "")
-    
-    if ml_domain_co:
-        company_context = f"with prestigious domain tenure at {ml_domain_co}"
-    elif has_startup:
-        company_context = "with startup-scale product delivery"
-    else:
-        company_context = "with enterprise engineering rigor"
-    
-    # Location & availability
+    # 3. Location & Availability
     loc = profile.get("location", "India")
     loc_lower = loc.lower()
     is_local = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad"])
     willing_reloc = signals.get("willing_to_relocate", False)
     notice = signals.get("notice_period_days", 0)
     
+    # Location phrasing
     if is_local:
-        loc_str = "locally based"
+        loc_options = [f"locally based in {loc}", f"based locally in {loc}", f"living locally in {loc}"]
     elif willing_reloc:
-        loc_str = f"in {loc} (open to relocation)"
+        loc_options = [f"located in {loc} (open to relocation)", f"in {loc} and willing to relocate", f"relocating from {loc}"]
     else:
-        loc_str = f"based in {loc}"
-        
-    avail_str = f"{loc_str} with {notice}-day notice" if notice > 0 else f"{loc_str} available immediately"
+        loc_options = [f"based in {loc}", f"located in {loc}", f"residing in {loc}"]
+    loc_phrase = loc_options[cand_num % len(loc_options)]
     
-    # Build engagement strengths and honest concerns dynamically
-    concerns = []
+    # Notice period phrasing
+    if notice == 0:
+        notice_options = ["available immediately", "ready to start immediately", "with immediate availability"]
+    else:
+        notice_options = [f"with a {notice}-day notice period", f"requiring {notice} days notice", f"on a {notice}-day notice"]
+    notice_phrase = notice_options[(cand_num + 1) % len(notice_options)]
+    
+    # Join location & notice
+    join_options = [
+        f"{loc_phrase} and {notice_phrase}",
+        f"{loc_phrase}, {notice_phrase}",
+        f"{loc_phrase} ({notice_phrase})"
+    ]
+    avail_str = join_options[(cand_num + 3) % len(join_options)]
+    
+    # 4. Strengths & Concerns
     strengths = []
+    concerns = []
     
+    # Strengths
     resp = signals.get("recruiter_response_rate", 1.0)
     if resp >= 0.85:
-        strengths.append(f"high responsiveness ({int(resp*100)}% reply rate)")
-    
-    saved = signals.get("saved_by_recruiters_30d", 0)
-    if saved >= 10:
-        strengths.append(f"saved by {saved} recruiters")
+        rate_pct = int(resp * 100)
+        s_resp_options = [f"highly responsive ({rate_pct}% reply rate)", f"excellent engagement ({rate_pct}% responsiveness)", f"very active response rate ({rate_pct}%)"]
+        strengths.append(s_resp_options[cand_num % len(s_resp_options)])
         
-    # Check flags for honest concerns
+    saved = signals.get("saved_by_recruiters_30d", 0)
+    if saved >= 5:
+        s_saved_options = [f"pre-vetted by {saved} recruiters", f"saved by {saved} recruiters recently", f"strong market interest ({saved} saves)"]
+        strengths.append(s_saved_options[(cand_num + 1) % len(s_saved_options)])
+        
+    github_score = signals.get("github_activity_score", -1)
+    if github_score >= 50:
+        s_git_options = ["active GitHub activity", "strong GitHub contribution presence", "robust public git profile"]
+        strengths.append(s_git_options[(cand_num + 2) % len(s_git_options)])
+        
+    if has_tier1:
+        s_tier_options = ["educated at Tier-1 school", "Tier-1 academic pedigree", "Tier-1 college credentials"]
+        strengths.append(s_tier_options[(cand_num + 3) % len(s_tier_options)])
+        
+    if has_phd:
+        strengths.append("holds a Ph.D. degree")
+    elif has_masters:
+        strengths.append("holds a Master's degree")
+        
+    if has_publications:
+        strengths.append(f"published research at {pub_venue}")
+        
+    # Concerns
     if item.get("is_cv_speech_primary") and not item.get("has_nlp_ir_compensation"):
         concerns.append("CV-primary background with limited NLP/IR experience")
-        
     if item.get("has_credibility_concern") and item.get("credibility_warning_skills"):
-        concerns.append(f"assessment score concern in {item['credibility_warning_skills'][0]}")
-        
+        concerns.append(f"expert skill assessment warnings ({item['credibility_warning_skills'][0]})")
     if item.get("has_salary_inversion", False):
-        concerns.append("data discrepancy in expected salary bounds")
-        
+        concerns.append("minor profile data quality discrepancies")
     if notice > 90:
-        concerns.append(f"extended notice period ({notice} days)")
+        concerns.append(f"long notice period of {notice} days")
         
     last_active = signals.get("last_active_date", "")
     if last_active:
@@ -253,28 +369,44 @@ def generate_candidate_reasoning(rank_unused, item, reference_date):
             active_d = datetime.date.fromisoformat(last_active)
             days_inactive = (reference_date - active_d).days
             if days_inactive > 180:
-                concerns.append(f"inactive on platform for {days_inactive} days")
+                concerns.append(f"dormant profile ({days_inactive} days inactive)")
         except Exception:
             pass
             
     if item.get("has_skills_stuffing_concern", False):
-        concerns.append("potential skill stuffing (high claimed skills, low career description mentions)")
-    
-    # Sentence assembly
-    sent1 = f"Currently {title} at {company} ({exp:.1f} yrs exp) {company_context}."
-    sent2 = f"Demonstrates {alignment} leveraging {skills_str}."
-    
-    logistics = f"{avail_str.capitalize()}."
-    if strengths:
-        logistics += f" Strong signals: {', '.join(strengths)}."
-    if concerns:
-        logistics += f" Note: {'; '.join(concerns)}."
+        concerns.append("potential skill stuffing behavior flagged")
         
-    reasoning = f"{sent1} {sent2} {logistics}"
+    # Build strengths and concerns string
+    logistics = ""
+    # Tone adjustment based on rank
+    if rank <= 10:
+        prefix_options = ["Excellent founding fit. ", "Strong recommendation. ", "Top-tier candidate. ", "Highly aligned profile. "]
+        logistics += prefix_options[cand_num % len(prefix_options)]
+    elif rank >= 85:
+        prefix_options = ["Adjacent fit. ", "Final shortlist candidate. ", "Marginal alignment. ", "Borderline founding candidate. "]
+        logistics += prefix_options[cand_num % len(prefix_options)]
+        
+    logistics += f"Located {avail_str}."
     
+    extra_details = []
+    if strengths:
+        extra_details.append(f"Strong indicators: {', '.join(strengths)}")
+    if concerns:
+        extra_details.append(f"Note: {'; '.join(concerns)}")
+        
+    if extra_details:
+        logistics += " " + ". ".join(extra_details) + "."
+        
+    # Sentence assembly
+    reasoning = f"{s1} {s2} {logistics}"
+    
+    # Strip double spaces
+    reasoning = re.sub(r'\s+', ' ', reasoning).strip()
+    
+    # Hard truncation to ensure length limits
     words = reasoning.split()
-    if len(words) > 80:
-        reasoning = " ".join(words[:78]) + "..."
+    if len(words) > 75:
+        reasoning = " ".join(words[:73]) + "..."
         
     return reasoning
 
@@ -716,11 +848,30 @@ def main():
             edu_base_score = max(scores) if scores else 30.0
             
         bonus = 0.0
+        has_quant_field = False
+        degree_bonus = 0.0
+        
         for edu in education:
             field = edu.get("field_of_study", "").lower()
-            if any(kw in field for kw in ["computer science", "cs", "information technology", "it", "machine learning", "ml", "artificial intelligence", "ai", "data science"]):
-                bonus = 10.0
-                break
+            degree = edu.get("degree", "").lower()
+            
+            is_quant = any(kw in field for kw in [
+                "computer science", "cs", "information technology", "it", 
+                "machine learning", "ml", "artificial intelligence", "ai", 
+                "data science", "statistics", "stats", "mathematics", "math"
+            ])
+            
+            if is_quant:
+                has_quant_field = True
+                # Check degree level
+                if any(deg in degree for deg in ["ph.d", "phd", "doctor"]):
+                    degree_bonus = max(degree_bonus, 12.0)
+                elif any(deg in degree for deg in ["master", "m.sc", "msc", "m.tech", "mtech", "m.e.", "m.s.", "ms"]) or degree == "me":
+                    degree_bonus = max(degree_bonus, 6.0)
+                    
+        if has_quant_field:
+            bonus = 10.0 + degree_bonus
+            
         edu_score = min(100.0, edu_base_score + bonus)
         edu_score_contrib = 0.10 * edu_score
         
@@ -734,6 +885,42 @@ def main():
             title_score_contrib + 
             edu_score_contrib
         ) / 1.3
+        
+        # 1.6.2 Research Publications Boost (from Nice-to-Have in JD)
+        has_publications = False
+        career_desc_text = " ".join([job.get("description", "") for job in career if job.get("description")])
+        summary_text = profile.get("summary", "")
+        full_text_for_pub = (summary_text + " " + career_desc_text).lower()
+        pub_venues = ["neurips", "icml", "cvpr", "kdd", "acl", "sigir", "recsys"]
+        for venue in pub_venues:
+            if re.search(r'\b' + re.escape(venue) + r'\b', full_text_for_pub):
+                has_publications = True
+                break
+        if has_publications:
+            fit_score = min(100.0, fit_score + 10.0)
+
+        # 1.6.3 Certifications Boost (up to +6.0 points)
+        certifications_list = cand.get("certifications", [])
+        cert_bonus = 0.0
+        for cert in certifications_list:
+            cert_name = cert.get("name", "").lower()
+            if any(kw in cert_name for kw in ["machine learning", "deep learning", "tensorflow", "pytorch", "aws certified machine learning", "gcp professional ml", "google cloud professional ml", "google cloud machine learning"]):
+                cert_bonus += 2.0
+        fit_score = min(100.0, fit_score + min(6.0, cert_bonus))
+
+        # 1.6.4 English Language Proficiency Check
+        languages_list = cand.get("languages", [])
+        has_english_prof = False
+        for lang in languages_list:
+            lang_name = lang.get("language", "").lower()
+            if "english" in lang_name:
+                lang_prof = lang.get("proficiency", "").lower()
+                if any(prof in lang_prof for prof in ["professional", "native", "fluent", "bilingual", "full"]):
+                    has_english_prof = True
+                    break
+        # Soft penalty if English proficiency is lacking
+        if not has_english_prof:
+            fit_score *= 0.90
         
         # 1.6.5 Skill Assessment Score Modifier
         assess_scores = signals.get("skill_assessment_scores", {})
@@ -824,7 +1011,16 @@ def main():
         sal_max = sal_range.get("max", 0)
         if sal_min > 0 and sal_max > 0 and sal_min > sal_max:
             has_salary_inversion = True
+            sal_min, sal_max = sal_max, sal_min
             fit_score *= 0.95  # 5% penalty for data quality concern
+
+        # Check against JD salary budget (INR 35-55 LPA)
+        # Min exceeds 55 LPA -> out of range / budget constraint
+        if sal_min > 55.0:
+            fit_score *= 0.10  # Severe budget penalty
+        # Max is under 25 LPA -> likely lacks seniority for Founding Senior AI Engineer
+        elif 0 < sal_max < 25.0:
+            fit_score *= 0.80  # Soft seniority penalty
 
         # 1.9.5 Skills Credibility check (Keyword Stuffing Defense)
         # If a candidate lists many JD-relevant skills but very few appear in actual career history descriptions
@@ -846,7 +1042,7 @@ def main():
         country_lower = profile.get("country", "").lower()
         
         is_jd_named_cities = any(city in loc_lower for city in ["pune", "noida", "delhi", "new delhi", "gurugram", "gurgaon", "faridabad", "ghaziabad", "hyderabad", "mumbai"])
-        is_other_tier1 = any(city in loc_lower for city in ["bangalore", "bengaluru", "chennai"])
+        is_other_tier1 = any(city in loc_lower for city in ["bangalore", "bengaluru", "chennai", "kolkata", "ahmedabad"])
         
         willing_reloc = signals.get("willing_to_relocate", False)
         
@@ -864,11 +1060,11 @@ def main():
         if notice_days <= 30:
             notice_modifier = 1.0
         elif notice_days <= 60:
-            notice_modifier = 0.9
+            notice_modifier = 0.97
         elif notice_days <= 90:
-            notice_modifier = 0.8
+            notice_modifier = 0.85
         else:
-            notice_modifier = 0.6
+            notice_modifier = 0.65
             
         # 2.3 Activity Modifier
         last_active_str = signals.get("last_active_date", "")
@@ -1042,6 +1238,31 @@ def main():
             if completeness > 80.0 and rec_resp < 0.02 and int_comp < 0.02:
                 is_honeypot = True
                 disqualification_reason = "Fabricated profile completeness with zero response rates"
+
+        # Rule 3.5: Company Foundation Date Violation (Krutrim/Sarvam AI check)
+        if not is_honeypot:
+            krutrim_found = datetime.date(2023, 4, 1)
+            sarvam_found = datetime.date(2023, 7, 1)
+            for job in career:
+                comp_lower = job.get("company", "").strip().lower()
+                s_date = parse_date(job.get("start_date"))
+                if s_date:
+                    if "krutrim" in comp_lower and s_date < krutrim_found:
+                        is_honeypot = True
+                        disqualification_reason = f"Krutrim start date {s_date} before foundation April 2023"
+                        break
+                    elif "sarvam" in comp_lower and s_date < sarvam_found:
+                        is_honeypot = True
+                        disqualification_reason = f"Sarvam AI start date {s_date} before foundation July 2023"
+                        break
+
+        # Rule 3.6: Expert Proficiency with Zero Duration
+        if not is_honeypot:
+            for s in skills:
+                if s.get("proficiency", "").lower() == "expert" and s.get("duration_months", 0) == 0:
+                    is_honeypot = True
+                    disqualification_reason = f"Expert skill '{s.get('name')}' claimed with zero duration"
+                    break
 
         if is_honeypot:
             final_score = 0.0
