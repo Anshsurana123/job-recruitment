@@ -934,6 +934,14 @@ def main():
         elif saved_count >= 2:
             beh_modifier *= 1.05  # Moderate implicit endorsement
             
+        # Search Appearance Boost (Market Demand)
+        # log scaling relative to 500 searches, capped at 1.05 max multiplier
+        search_appearances = signals.get("search_appearance_30d", 0)
+        if search_appearances > 0:
+            log_ratio = math.log(search_appearances) / math.log(500.0)
+            search_boost = 1.0 + 0.05 * min(1.0, max(0.0, log_ratio))
+            beh_modifier *= search_boost
+
         avail_multiplier = loc_modifier * notice_modifier * act_modifier * beh_modifier
         
         final_score = fit_score * avail_multiplier
