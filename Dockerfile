@@ -3,7 +3,7 @@
 # Multi-Agent SLM Swarm Architecture for Candidate Ranking
 # ============================================================
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Install system dependencies (build-essential, git, and graphics libraries for vision/OCR compatibility)
 RUN apt-get update && apt-get install -y --no-install-recommends \
