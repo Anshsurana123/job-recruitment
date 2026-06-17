@@ -1,0 +1,61 @@
+# Large data and index files
+*.pkl
+*.jsonl
+*.jsonl.gz
+candidates.jsonl
+bm25_index_full.pkl
+bm25_index_sample.pkl
+bm25f_index_full.pkl
+bm25f_index_sample.pkl
+embeddings_full.pkl
+student_ranker.pkl
+
+# Git and cache
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+talent_radar/.pytest_cache
+talent_radar/__pycache__
+talent_radar/tests/__pycache__
+
+# Large output CSVs
+team_proud_franklin*.csv
+origin_output.csv
+sample_submission.csv
+
+# Documents and presentations
+*.docx
+*.doc
+*.pdf
+README_docx.txt
+README_full_extracted.txt
+job_description_full_extracted.txt
+submission_spec.txt
+submission_spec_full_extracted.txt
+redrob_signals_doc.txt
+redrob_signals_doc_full_extracted.txt
+
+# Model cache (will be downloaded at runtime if needed)
+model_cache/
+
+# Scratch and temporary files
+scratch/
+graphify-out/
+talent_radar/graphify-out/
+talent_radar/chroma_db/
+.agents/
+
+# Training scripts (not needed at runtime)
+train_student_ranker.py
+train_student_ranker.ipynb
+precompute_embeddings.py
+generate_presentation.py
+validate_submission.py
+download_model.py
+
+# Environment
+.env
+output.log
+pub_extracted/
