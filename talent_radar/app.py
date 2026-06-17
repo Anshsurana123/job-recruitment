@@ -503,16 +503,22 @@ async def api_upload(file: UploadFile = File(...)):
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"ZIP Ingestion Failed: {str(e)}")
             
-    # Process standard JSON dataset upload
     else:
         try:
             contents = await file.read()
-            data = json.loads(contents.decode("utf-8"))
+            content_str = contents.decode("utf-8").strip()
+            data = []
+            if content_str.startswith("[") and content_str.endswith("]"):
+                data = json.loads(content_str)
+            else:
+                for line in content_str.split("\n"):
+                    if line.strip():
+                        data.append(json.loads(line))
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid file format: {str(e)}. Must be a valid JSON file.")
+            raise HTTPException(status_code=400, detail=f"Invalid file format: {str(e)}. Must be a valid JSON or JSONL file.")
             
         if not isinstance(data, list):
-            raise HTTPException(status_code=400, detail="Invalid data format. Dataset must be a JSON array (list of candidates).")
+            raise HTTPException(status_code=400, detail="Invalid data format. Dataset must be a list of candidates.")
             
         if len(data) == 0:
             raise HTTPException(status_code=400, detail="Uploaded dataset is empty.")
@@ -525,7 +531,8 @@ async def api_upload(file: UploadFile = File(...)):
                 raise HTTPException(status_code=400, detail=f"Candidate at index {idx} must be an object.")
                 
             # If item matches official nested schema, normalize it to internal sandbox schema
-            if "profile" in item and "redrob_signals" in item:
+            is_nested = "profile" in item and "redrob_signals" in item
+            if is_nested:
                 try:
                     profile = item.get("profile", {})
                     career = item.get("career_history", [])
@@ -571,7 +578,15 @@ async def api_upload(file: UploadFile = File(...)):
                             }
                             for job in career
                         ],
-                        "last_active": signals.get("last_active_date")
+                        "last_active": signals.get("last_active_date"),
+                        
+                        # Preserve original nested fields for Scorer adapter
+                        "profile": profile,
+                        "skills": skills,
+                        "education": item.get("education", []),
+                        "certifications": item.get("certifications", []),
+                        "languages": item.get("languages", []),
+                        "redrob_signals": signals
                     }
                 except Exception as map_err:
                     raise HTTPException(status_code=400, detail=f"Failed to map nested profile at index {idx}: {str(map_err)}")
@@ -608,7 +623,7 @@ async def api_upload(file: UploadFile = File(...)):
             if last_active is not None:
                 last_active = str(last_active)
                 
-            validated_candidates.append({
+            validated_record = {
                 "candidate_id": candidate_id,
                 "name": name,
                 "current_title": current_title,
@@ -617,7 +632,13 @@ async def api_upload(file: UploadFile = File(...)):
                 "career_history": cleaned_history,
                 "skills_listed": skills_listed,
                 "last_active": last_active
-            })
+            }
+            # Add nested fields if they exist in mapped item
+            for extra_key in ["profile", "skills", "education", "certifications", "languages", "redrob_signals"]:
+                if extra_key in item:
+                    validated_record[extra_key] = item[extra_key]
+                    
+            validated_candidates.append(validated_record)
             
         candidates_path = base_dir / "candidates.json"
         try:

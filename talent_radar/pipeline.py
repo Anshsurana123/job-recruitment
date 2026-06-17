@@ -163,7 +163,8 @@ class TalentRadarPipeline:
             sector=refined_matrix.sector_token,
             semantic_weight=semantic_weight,
             velocity_weight=velocity_weight,
-            freshness_weight=freshness_weight
+            freshness_weight=freshness_weight,
+            job_description=job_description
         )
         final_ranked_candidates = scorer.score_candidates(sorted_candidates)
         timings["scorer_scoring_ms"] = (time.time() - step4_start) * 1000

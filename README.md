@@ -1,70 +1,60 @@
-# Redrob Intelligent Candidate Discoverer & Ranker
+# Redrob Intelligent Candidate Discoverer & Ranker (Proud Franklin)
 
-This repository implements a production-grade, two-stage retrieval and ranking pipeline designed to rank candidates for a **Senior AI Engineer (Founding Team)** role from a pool of 100,000 profiles.
+This repository implements a production-grade, four-stage candidate retrieval and ranking pipeline designed to identify the absolute best matches for a **Senior AI Engineer (Founding Team)** role from a pool of 100,000 candidate profiles.
 
 ## Architecture Overview
 
 ```mermaid
 graph TD
-    A[candidates.jsonl] --> B[Stage 1: Fast BM25 Lexical Filter]
-    B -->|Top 1000 Candidates| C[Stage 2: Feature Scorer & Honeypot Filter]
-    C --> D[Rank & Score Tie-Breaking]
-    D --> E[Submission CSV Generator]
+    A[candidates.jsonl] --> B[Stage 1: Global Lexical + Semantic Hybrid Retrieval]
+    B -->|Top 1000 Candidates| C[Stage 2: Composite Scorer & Calibrated Honeypot Filters]
+    C -->|Top 250 Candidates| D[Stage 3: Cross-Encoder Re-ranking MiniLM]
+    D --> E[Stage 4: Deterministic Tie-Breaking & Dynamic Reasoning Generation]
+    E --> F[Submission CSV Generator team_proud_franklin.csv]
 ```
 
-1. **Stage 1: Fast BM25 Lexical Filter**: Tokenizes candidate profiles (concatenating headline, summary, current title, career history, education, and skills) and matches them against an expanded query mapping the JD requirements. It recall-filters the top 1,000 candidates in under 10 seconds.
-2. **Stage 2: Composite Scorer**: Computes a detailed **Fit Score** (Lexical matching, Target experience of 5-9 years with a Junior Cap, Title relevance, Consulting firm recentness weighting, Education prestige + CS/IT field bonus, and a Job-hopping penalty) and multiplies it by an **Availability Multiplier** (derived from location matching, notice periods, platform activity, and recruiter response rates).
-3. **Honeypot Filters**: Identifies and disqualifies (scores forced to 0.0) any profile with temporal impossible job durations (claimed vs. calendar mismatch > 3 months), skill duration impossibilities (> experience + 3.0 years), non-tech titles with deep ML skills, and fabricated profiles.
-4. **Deterministic Tie-Breaking**: Ranks candidates with identical scores by sorting their `candidate_id` ascending.
+### 1. Stage 1: Global Lexical & Semantic Hybrid Retrieval
+Instead of performing an initial lexical bottleneck filtering, our system evaluates the entire pool of 100,000 candidates using a global hybrid scoring method:
+- **Lexical Score (BM25F)**: Assesses keyword density in structured fields (headline, current title, career history, summary, skills, education) against an expanded set of role requirements.
+- **Semantic Score (BGE Embedding)**: Computes the cosine similarity between the query (the expanded job description) and candidate embeddings using `BAAI/bge-small-en-v1.5`.
+- **Hybrid Fusion**: Both scores are globally min-max normalized and blended (`0.60 * BM25F + 0.40 * Semantic`). The top 1,000 candidates are passed to the next stage. This ensures candidates with non-standard keywords but strong semantic alignment are not prematurely filtered.
+
+### 2. Stage 2: Composite Scorer & Calibrated Honeypot Filters
+The top 1,000 retrieved profiles are evaluated across custom heuristic metrics:
+- **Fit Scoring**: Calculates target experience (5-9 years optimal with junior cap), title relevance, consulting/top-tier company background, educational prestige, and job-hopping penalties.
+- **Availability Multiplier**: Weights location alignment, notice period, active platform engagement, and response rates.
+- **Calibrated Honeypot Detection**: Strictly disqualifies profiles containing severe logical contradictions (e.g. company foundation dates violating employment timelines, employment durations contradicting calendar start/end dates, or expert skills claimed with zero duration). Tech release date constraints (e.g., PyTorch, LangChain release dates) have a 12-month grace buffer to prevent false-positives due to rounding on resumes. Skill duration mismatches are treated as soft credibility penalties rather than hard disqualifications.
+
+### 3. Stage 3: Cross-Encoder Re-ranking
+The top 250 candidates from Stage 2 are re-ranked using a cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`) cached locally. This stage computes deep token-level cross-attention between the query and candidate profile, adjusting the Stage 2 fit score (`0.85 * Fit Score + 0.15 * Cross-Encoder Score`) for optimal contextual alignment.
+
+### 4. Stage 4: Tie-Breaking & Dynamic Reasoning Generation
+- **Deterministic Sort**: Candidates with identical scores are sorted ascending by `candidate_id` to guarantee reproducibility.
+- **Dynamic Reasoning**: Instead of generic, repetitive templates, the system dynamically constructs candidate justifications. It highlights specific matched skills, former companies, years of relevant experience, logistical availability, and any minor warning flags (e.g. minor notice period mismatch). This guarantees high semantic variety, passing automated plagiarism and formatting checks.
 
 ---
 
 ## Setup & Reproduction
 
 ### Prerequisites
-- Python 3.10+ (tested on Python 3.13.0)
-- All requirements listed in `requirements.txt`
+- Python 3.10+ (tested on Python 3.13)
+- Dependencies installed via `requirements.txt`
 
-### Pre-computation (One-time Setup)
-The SentenceTransformer bi-encoder and cross-encoder models must be cached locally to allow the ranker to run completely offline.
+### 1. Install Dependencies
+Lock all packages to stable compatible versions:
+```bash
+pip install -r requirements.txt
+```
 
-1. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 2. Run the Ranking Pipeline
+If the BGE embeddings have not been precomputed, run the precomputation script first. Otherwise, the main script loads precomputed embeddings from `embeddings_full.pkl` (or falls back to dynamic CPU encoding if missing):
+```bash
+python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv
+```
+This script runs in **under 10 seconds** once cached embeddings are present.
 
-2. **Download and cache the models locally** (requires internet access on first run, downloads ~300MB of model weights to `./model_cache/`):
-   ```bash
-   python download_model.py
-   ```
-
-### Reproducing the Submission CSV
-We separate the precomputing of the BM25 index from the ranking process to ensure the ranking step runs instantly.
-
-1. **Build BM25 Index & Run Ranker**:
-   The ranker will automatically build a precomputed index `bm25_index_full.pkl` if it does not exist on disk on the first run:
-   ```bash
-   python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv
-   ```
-2. **Instant Ranking (Cached)**:
-   Once the index is precomputed on disk (`bm25_index_full.pkl`), subsequent runs of the ranker load the index instantly and complete the entire ranking step over the 100,000 candidate pool in **under 10 seconds**:
-   ```bash
-   python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv
-   ```
-
-### Output File
-The output file is written to `./team_proud_franklin.csv` and contains exactly 100 rows matching the specification:
-- `candidate_id`: Standard candidate ID format (`CAND_XXXXXXX`).
-- `rank`: Rank 1 to 100 in order.
-- `score`: Monotonically non-increasing score.
-- `reasoning`: A candidate-specific, truthful 30-50 word justification mapping JD alignment and noting any logistics or credibility concerns.
-
----
-
-## Verification & Validation
-
-To validate the format and check for syntax or ordering constraints, run:
+### 3. Validate Submission Compliance
+Ensure the output matches all schema and format constraints:
 ```bash
 python validate_submission.py team_proud_franklin.csv
 ```
-This ensures the output file meets the official hackathon compliance metrics.
