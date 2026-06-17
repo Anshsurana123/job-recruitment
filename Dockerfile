@@ -27,9 +27,10 @@ ENV PATH="/home/user/.local/bin:$PATH" \
 # Copy requirements.txt and pre-install dependencies as root to cache docker layers
 COPY ./requirements.txt /home/user/app/requirements.txt
 
-# Upgrade pip and install PyTorch + all dependencies
+# Upgrade pip and install CPU-only PyTorch + all dependencies
+# (Switch to full torch if you select GPU hardware in HF Space settings)
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r /home/user/app/requirements.txt
 
 # Copy the entire project repository and set ownership to our non-root user

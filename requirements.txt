@@ -1,7 +1,6 @@
-# Core Ranking & ML Dependencies
+# Core Ranking & ML Dependencies (torch is installed separately in Dockerfile)
 numpy==2.4.6
 sentence-transformers==5.5.1
-torch>=2.0.0
 
 # Web Application & API Dependencies
 pandas==2.2.3
