@@ -1098,6 +1098,8 @@ class CandidateScorer:
                             disqualification_reason = f"Expert skill '{s.get('name')}' claimed with zero duration"
                             break
                             
+
+                            
                 final_score = fit_score * avail_multiplier
                 if is_honeypot or is_pure_research:
                     final_score = 0.0

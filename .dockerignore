@@ -21,7 +21,7 @@ talent_radar/__pycache__
 talent_radar/tests/__pycache__
 
 # Large output CSVs
-team_proud_franklin*.csv
+team_TECHFLOW*.csv
 origin_output.csv
 sample_submission.csv
 

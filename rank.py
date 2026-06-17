@@ -435,7 +435,7 @@ def extract_locations_from_jd(jd_text):
 def parse_args():
     parser = argparse.ArgumentParser(description="Redrob Candidate Ranking Pipeline")
     parser.add_argument("--candidates", type=str, default="./candidates.jsonl", help="Path to candidates jsonl file")
-    parser.add_argument("--out", type=str, default="./team_proud_franklin.csv", help="Path to output submission CSV file")
+    parser.add_argument("--out", type=str, default="./team_TECHFLOW.csv", help="Path to output submission CSV file")
     parser.add_argument("--jd", type=str, default=None, help="Path to job description text/docx file")
     return parser.parse_args()
 
@@ -1277,7 +1277,6 @@ def main():
                     
         # Rule 3.7: Technology Release Date Mismatch
         # Removed: In synthetic datasets, skill durations are randomly generated without real-world launch date constraints.
-        # Enforcing this would cause false positives on genuine candidates.
 
                     
         if is_pure_research:

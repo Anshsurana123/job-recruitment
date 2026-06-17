@@ -10,7 +10,7 @@ license: mit
 short_description: AI-powered candidate ranking and discovery pipeline
 ---
 
-# Redrob Intelligent Candidate Discoverer & Ranker (Proud Franklin)
+# Redrob Intelligent Candidate Discoverer & Ranker (TECHFLOW)
 
 This repository implements a production-grade, four-stage candidate retrieval and ranking pipeline designed to identify the absolute best matches for a **Senior AI Engineer (Founding Team)** role from a pool of 100,000 candidate profiles.
 
@@ -22,7 +22,7 @@ graph TD
     B -->|Top 1000 Candidates| C[Stage 2: Composite Scorer & Calibrated Honeypot Filters]
     C -->|Top 250 Candidates| D[Stage 3: Cross-Encoder Re-ranking MiniLM]
     D --> E[Stage 4: Deterministic Tie-Breaking & Dynamic Reasoning Generation]
-    E --> F[Submission CSV Generator team_proud_franklin.csv]
+    E --> F[Submission CSV Generator team_TECHFLOW.csv]
 ```
 
 ### 1. Stage 1: Global Lexical & Semantic Hybrid Retrieval
@@ -61,12 +61,12 @@ pip install -r requirements.txt
 ### 2. Run the Ranking Pipeline
 If the BGE embeddings have not been precomputed, run the precomputation script first. Otherwise, the main script loads precomputed embeddings from `embeddings_full.pkl` (or falls back to dynamic CPU encoding if missing):
 ```bash
-python rank.py --candidates ./candidates.jsonl --out ./team_proud_franklin.csv
+python rank.py --candidates ./candidates.jsonl --out ./team_TECHFLOW.csv
 ```
 This script runs in **under 10 seconds** once cached embeddings are present.
 
 ### 3. Validate Submission Compliance
 Ensure the output matches all schema and format constraints:
 ```bash
-python validate_submission.py team_proud_franklin.csv
+python validate_submission.py team_TECHFLOW.csv
 ```

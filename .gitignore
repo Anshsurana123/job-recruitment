@@ -30,7 +30,7 @@ scratch/
 extreme_anomalies.txt
 suspected_honeypots.txt
 strict_honeypots.txt
-team_proud_franklin_sample.csv
+team_TECHFLOW_sample.csv
 
 # Document downloads (original specs/JDs)
 *.docx

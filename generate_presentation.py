@@ -13,7 +13,7 @@ class PresentationPDF(FPDF):
             self.set_y(-12)
             self.set_font("Helvetica", "I", 9)
             self.set_text_color(148, 163, 184) # slate-400
-            self.cell(0, 10, f"Page {self.page_no()} | Team proud-franklin | Redrob Candidate Ranker Presentation", align="C")
+            self.cell(0, 10, f"Page {self.page_no()} | Team TECHFLOW | Redrob Candidate Ranker Presentation", align="C")
 
 def draw_background(pdf, dark=True):
     if dark:
@@ -60,7 +60,7 @@ def create_deck():
     pdf.cell(50, 8, "Team Name:", ln=False)
     pdf.set_font("Helvetica", "B", 13)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 8, "proud-franklin", ln=True)
+    pdf.cell(0, 8, "TECHFLOW", ln=True)
 
     pdf.set_font("Helvetica", "", 13)
     pdf.set_text_color(203, 213, 225)
@@ -144,7 +144,7 @@ def create_deck():
     pdf.set_x(161)
     pdf.set_font("Helvetica", "B", 15)
     pdf.set_text_color(34, 197, 94) # Green-500
-    pdf.cell(116, 8, "proud-franklin Approach", ln=True)
+    pdf.cell(116, 8, "TECHFLOW Approach", ln=True)
     
     solutions = [
         ("Two-Stage Pipeline", "BM25F lexical recall + Transformer re-ranking."),
@@ -512,7 +512,7 @@ def create_deck():
         pdf.cell(0, 5, f" - {desc}", ln=True)
 
     # Save output PDF
-    pdf.output("proud-franklin-presentation.pdf")
+    pdf.output("TECHFLOW-presentation.pdf")
     print("Presentation PDF generated successfully.")
 
 if __name__ == "__main__":
