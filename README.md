@@ -1,3 +1,15 @@
+---
+title: Talent Radar - Intelligent Candidate Ranker
+emoji: 🚀
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+license: mit
+short_description: AI-powered candidate ranking and discovery pipeline
+---
+
 # Redrob Intelligent Candidate Discoverer & Ranker (Proud Franklin)
 
 This repository implements a production-grade, four-stage candidate retrieval and ranking pipeline designed to identify the absolute best matches for a **Senior AI Engineer (Founding Team)** role from a pool of 100,000 candidate profiles.
