@@ -56,8 +56,8 @@ LOCATIONS = [
 ]
 
 # Generate random past dates
-def get_random_date_range(years_back_start, years_back_end):
-    today = datetime.date(2026, 5, 20)
+def get_random_date_range(years_back_start, years_back_end, reference_date=None):
+    today = reference_date or datetime.date(2026, 5, 20)
     start_days_ago = random.randint(int(years_back_end * 365), int(years_back_start * 365))
     duration_days = random.randint(300, 1200)
     
@@ -71,8 +71,8 @@ def get_random_date_range(years_back_start, years_back_end):
         
     return start_date.isoformat(), end_date_str
 
-def get_last_active_date(cohort):
-    today = datetime.date(2026, 5, 20)
+def get_last_active_date(cohort, reference_date=None):
+    today = reference_date or datetime.date(2026, 5, 20)
     if cohort == "Fresh":
         # Updated in last 7 days
         days_ago = random.randint(0, 7)

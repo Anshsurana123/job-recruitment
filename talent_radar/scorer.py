@@ -57,12 +57,12 @@ def infer_seniority_level(title):
         # Default for engineer/developer or standard roles
         return SENIORITY_MAP["mid"]
 
-def parse_date_string(date_str):
+def parse_date_string(date_str, reference_date=None):
     if not date_str:
         return None
     date_clean = str(date_str).strip().strip('"').strip("'").strip()
     if date_clean.lower() in ("present", "current", "now", "ongoing", "none", "null", ""):
-        return REFERENCE_DATE
+        return reference_date if reference_date is not None else REFERENCE_DATE
         
     # 1. Try standard ISO formats
     match = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", date_clean)
@@ -136,15 +136,16 @@ def parse_date_string(date_str):
 
     return None
 
-def calculate_years_span(start_date_str, end_date_str):
+def calculate_years_span(start_date_str, end_date_str, reference_date=None):
     try:
-        start_date = parse_date_string(start_date_str)
-        end_date = parse_date_string(end_date_str)
+        ref_date = reference_date if reference_date is not None else REFERENCE_DATE
+        start_date = parse_date_string(start_date_str, reference_date=ref_date)
+        end_date = parse_date_string(end_date_str, reference_date=ref_date)
         
         if not start_date:
             return 1.0
         if not end_date:
-            end_date = REFERENCE_DATE
+            end_date = ref_date
             
         span_days = (end_date - start_date).days
         return max(0.0, span_days / 365.25)
@@ -268,7 +269,7 @@ def get_candidate_data(cand):
     }
 
 class CandidateScorer:
-    def __init__(self, seniority_level="Senior", target_keywords=None, sector="TECH", semantic_weight=0.60, velocity_weight=0.25, freshness_weight=0.15, job_description=None):
+    def __init__(self, seniority_level="Senior", target_keywords=None, sector="TECH", semantic_weight=0.60, velocity_weight=0.25, freshness_weight=0.15, job_description=None, reference_date=None):
         self.seniority_level = seniority_level.title()
         self.target_keywords = target_keywords or []
         self.sector = sector.upper().strip() if sector else "TECH"
@@ -276,6 +277,7 @@ class CandidateScorer:
         self.velocity_weight = velocity_weight
         self.freshness_weight = freshness_weight
         self.job_description = job_description
+        self.reference_date = reference_date or REFERENCE_DATE
         
         # Default experience and locations bounds
         self.min_exp = 5.0
@@ -485,8 +487,8 @@ class CandidateScorer:
                 days_since_update = 999
             else:
                 try:
-                    active_date = parse_date_string(last_active)
-                    days_since_update = (REFERENCE_DATE - active_date).days if active_date else 999
+                    active_date = parse_date_string(last_active, reference_date=self.reference_date)
+                    days_since_update = (self.reference_date - active_date).days if active_date else 999
                 except Exception:
                     days_since_update = 999
                 
@@ -978,8 +980,8 @@ class CandidateScorer:
                 else: notice_modifier = 0.50
                 
                 last_active_str = p_data["redrob_signals"].get("last_active_date", "")
-                active_date = parse_date_string(last_active_str)
-                days_active = (REFERENCE_DATE - active_date).days if active_date else 999
+                active_date = parse_date_string(last_active_str, reference_date=self.reference_date)
+                days_active = (self.reference_date - active_date).days if active_date else 999
                 if days_active <= 30: act_modifier = 1.05
                 elif days_active <= 90: act_modifier = 1.00
                 elif days_active <= 365: act_modifier = 0.85
@@ -1047,10 +1049,10 @@ class CandidateScorer:
                 disqualification_reason = ""
                 for job in p_data["career_history"]:
                     claimed_months = job.get("duration_months", 0)
-                    s_date = parse_date_string(job.get("start_date"))
-                    e_date = parse_date_string(job.get("end_date"))
+                    s_date = parse_date_string(job.get("start_date"), reference_date=self.reference_date)
+                    e_date = parse_date_string(job.get("end_date"), reference_date=self.reference_date)
                     if s_date:
-                        actual_end = e_date if e_date else REFERENCE_DATE
+                        actual_end = e_date if e_date else self.reference_date
                         actual_months = (actual_end - s_date).days / 30.44
                         if claimed_months > actual_months + 3.0:
                             is_honeypot = True

@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-09-04T10:43:43.870744",
+  "evaluation_date": "2026-05-20",
+  "dataset_file": "sample_candidates.json",
+  "dataset_sha256": "edd71d58c9673a5dee978c9206f32fd9c64fbd5ea2a04a8e7da49318c22a3fff",
+  "total_candidate_count": 50,
+  "ground_truth_relevant_count": 5,
+  "metrics": {
+    "retrieval": {
+      "recall_at_10": 0.8,
+      "recall_at_25": 1.0,
+      "recall_at_50": 1.0,
+      "candidate_coverage": 1.0
+    },
+    "ranking": {
+      "ndcg_at_10": 0.5991,
+      "ndcg_at_50": 0.8021,
+      "mrr": 1.0,
+      "precision_at_5": 0.6,
+      "precision_at_10": 0.4,
+      "map": 0.6998
+    },
+    "stability": {
+      "kendall_tau": 1.0,
+      "score_determinism": true,
+      "max_score_absolute_diff": 0.0
+    },
+    "integrity": {
+      "honeypots_in_top_10": 0,
+      "honeypots_in_top_100": 0,
+      "honeypot_rate_top_100_pct": 0.0
+    }
+  },
+  "performance": {
+    "run1_latency_seconds": 26.976,
+    "run2_latency_seconds": 8.527,
+    "avg_latency_seconds": 17.751
+  }
+}

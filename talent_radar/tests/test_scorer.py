@@ -62,7 +62,7 @@ def test_calculate_years_span():
     
     # Current active role ("Present" end date)
     five_years_ago = (datetime.date.today() - datetime.timedelta(days=5 * 365.25)).isoformat()
-    assert pytest.approx(calculate_years_span(five_years_ago, "Present"), 0.05) == 5.0
+    assert pytest.approx(calculate_years_span(five_years_ago, "Present", reference_date=datetime.date.today()), 0.05) == 5.0
     
     # Fallback default for invalid dates
     assert calculate_years_span("invalid-date", "Present") == 1.0

@@ -195,7 +195,11 @@ def main():
     parser.add_argument("--embeddings", type=str, default="./embeddings_full.pkl", help="Path to precomputed embeddings")
     parser.add_argument("--output", type=str, default="./student_ranker.pkl", help="Path to save student model weights")
     parser.add_argument("--size", type=int, default=10000, help="Number of retrieved candidates to label for training")
+    parser.add_argument("--evaluation-date", type=str, default=None, help="Evaluation reference date (YYYY-MM-DD), default: 2026-05-20")
     args = parser.parse_args()
+
+    ref_date = datetime.date.fromisoformat(args.evaluation_date.strip()) if args.evaluation_date else REFERENCE_DATE
+    print(f"Using evaluation reference date: {ref_date}")
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device} for Cross-Encoder labeling.")
@@ -525,7 +529,7 @@ def main():
         
         last_active_str = signals.get("last_active_date", "")
         active_date = parse_date(last_active_str)
-        days_active = (REFERENCE_DATE - active_date).days if active_date else 999
+        days_active = (ref_date - active_date).days if active_date else 999
         act_modifier = 1.05 if days_active <= 30 else (1.00 if days_active <= 90 else 0.50)
         
         avail_multiplier = loc_modifier * notice_modifier * act_modifier
@@ -605,11 +609,25 @@ def main():
     # Train student model using scikit-learn
     print("Training student Gradient Boosting model...")
     from sklearn.ensemble import GradientBoostingRegressor
-    from sklearn.model_selection import train_test_split
+    from sklearn.model_selection import GroupShuffleSplit
     from sklearn.metrics import mean_squared_error, r2_score
+    from ranking.leakage import compute_content_hash, validate_splits_leakage
 
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.15, random_state=42)
-    
+    # Audit and prevent data leakage via content-hash group splitting
+    groups = [compute_content_hash(text) for text in cross_encoder_texts]
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=42)
+    train_idx, val_idx = next(gss.split(X, y, groups=groups))
+    X_train, X_val = X[train_idx], X[val_idx]
+    y_train, y_val = y[train_idx], y[val_idx]
+
+    train_cands = [top_n_pool[i][3] for i in train_idx]
+    val_cands = [top_n_pool[i][3] for i in val_idx]
+    leakage_issues = validate_splits_leakage(train_cands, val_cands)
+    if leakage_issues:
+        print(f"[Leakage Warning] {len(leakage_issues)} issues found between splits: {leakage_issues}")
+    else:
+        print("[Leakage Audit] PASS: Verified zero candidate ID or resume content leakage between train and val splits.")
+
     model_student = GradientBoostingRegressor(
         n_estimators=150,
         learning_rate=0.08,
